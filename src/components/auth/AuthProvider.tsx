@@ -32,23 +32,63 @@ const AuthContext = createContext<AuthContextType>({
 
 export const useSupabaseAuth = () => useContext(AuthContext);
 
+/**
+ * Fetch user profile from public.users table and merge with auth metadata.
+ */
+async function fetchDbProfile(
+  supabase: ReturnType<typeof createClient>,
+  supabaseUser: SupabaseUser,
+): Promise<Partial<AppUser> | null> {
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, name, image, last_seen, is_online')
+      .eq('id', supabaseUser.id)
+      .maybeSingle();
+
+    if (error) {
+      // Expected if user row doesn't exist yet (new user, or trigger hasn't fired)
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('Failed to fetch DB profile:', error.message);
+      }
+      return null;
+    }
+
+    return data
+      ? {
+          id: data.id,
+          name: data.name,
+          image: data.image,
+          last_seen: data.last_seen,
+          is_online: data.is_online ?? false,
+        }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 export default function AuthProvider({ children }: { children: React.ReactNode }) {
   const [supabaseUser, setSupabaseUser] = useState<SupabaseUser | null>(null);
   const [user, setUser] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [supabase] = useState(() => createClient());
 
-  // Функція для нормалізації користувача (без БД доступу)
-  const normalizeUser = useCallback((supabaseUser: SupabaseUser | null) => {
-    if (!supabaseUser) {
-      setUser(null);
-      return;
-    }
+  // Функція для нормалізації користувача з БД даними
+  const normalizeUser = useCallback(
+    async (supabaseUser: SupabaseUser | null) => {
+      if (!supabaseUser) {
+        setUser(null);
+        return;
+      }
 
-    // Нормалізувати користувача без БД даних
-    const normalizedUser = UserUtils.normalize(supabaseUser, undefined);
-    setUser(normalizedUser);
-  }, []);
+      // Fetch DB profile to merge with auth metadata
+      const dbProfile = await fetchDbProfile(supabase, supabaseUser);
+      const normalizedUser = UserUtils.normalize(supabaseUser, dbProfile);
+      setUser(normalizedUser);
+    },
+    [supabase],
+  );
 
   // Функція для оновлення даних користувача
   const refreshUser = useCallback(async () => {
@@ -58,7 +98,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     } = await supabase.auth.getUser();
     if (!error && user) {
       setSupabaseUser(user);
-      normalizeUser(user);
+      await normalizeUser(user);
     }
   }, [supabase, normalizeUser]);
 
@@ -73,7 +113,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       setSupabaseUser(currentUser);
 
       if (currentUser) {
-        normalizeUser(currentUser);
+        await normalizeUser(currentUser);
       } else {
         setUser(null);
       }
@@ -108,7 +148,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
           );
           setLoading(false);
         } else {
-          handleAuthStateChange('INITIAL_SESSION', user ? ({ user } as Session) : null);
+          await handleAuthStateChange('INITIAL_SESSION', user ? ({ user } as Session) : null);
         }
       } catch {
         handleError(

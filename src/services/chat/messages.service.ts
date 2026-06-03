@@ -78,9 +78,13 @@ export const messagesApi = {
       throw networkError;
     }
 
-    // Hydrate reply_to and user fields for UI consistency
-    const hydrated = await messagesApi.getMessage((data as Message).id);
-    return hydrated as Message;
+    // Return raw RPC result. The realtime INSERT event handler in useChatsRealtime
+    // will hydrate reply_to and sender fields when it processes the event,
+    // eliminating the need for an extra getMessage call here.
+    return {
+      ...(data as Message),
+      attachments: (data as Message).attachments || [],
+    };
   },
 
   /**

@@ -1,12 +1,36 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.3.11/schema.json",
-  "assist": { "actions": { "source": { "organizeImports": "on" } } },
+  "assist": {
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  },
   "linter": {
     "enabled": true,
     "rules": {
       "recommended": true,
       "correctness": {
-        "noUnusedVariables": "warn"
+        "noUnusedVariables": "error",
+        "noUnusedImports": "error",
+        "noSwitchDeclarations": "error"
+      },
+      "style": {
+        "noDefaultExport": "off",
+        "useNumberNamespace": "off"
+      },
+      "suspicious": {
+        "noConsoleLog": "warn",
+        "noConsole": "off"
+      },
+      "complexity": {
+        "noBannedTypes": "error",
+        "noUselessConstructor": "error",
+        "noUselessFragments": "error",
+        "noUselessSwitchCase": "error",
+        "noUselessTernary": "error",
+        "useSimplifiedLogicExpression": "warn"
       }
     }
   },

@@ -3,13 +3,13 @@ services:
     container_name: telegraf-dev
     build:
       context: .
-      target: deps # Використовуємо стадію, де вже є node_modules
-    command: pnpm dev
+      target: deps
+    command: npm run dev
     ports:
       - "3000:3000"
     volumes:
       - .:/app
-      - /app/node_modules # Щоб не перетирати модулі всередині контейнера локальними
+      - /app/node_modules
       - /app/.next
     env_file:
       - .env.local

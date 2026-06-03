@@ -154,52 +154,92 @@ export function useChatsRealtime(user: User | null) {
       return null;
     };
 
+    // Shared cache updater for both INSERT and UPDATE events
+    // Extracted to avoid duplication between handleMessageInsert and handleMessageUpdate.
+    const updateMessageInCache = (msg: Message) => {
+      queryClient.setQueryData(['chats'], (old: InfiniteData<FullChat[]> | undefined) =>
+        upsertChatLastMessage(old, msg.chat_id, msg),
+      );
+      if (!hasChatInCache(msg.chat_id)) {
+        void hydrateAndUpsertChat(msg.chat_id);
+      }
+
+      queryClient.setQueryData<InfiniteData<Message[]>>(['messages', msg.chat_id], (old) => {
+        if (!old) return old;
+
+        // Try to find an existing page where this message (by id or client_id) already exists
+        const existingPageIdx = old.pages.findIndex((page) =>
+          page.some((m) => m.id === msg.id || (m.client_id && msg.client_id && m.client_id === msg.client_id)),
+        );
+
+        if (existingPageIdx !== -1) {
+          // Update in-place within the existing page
+          const newPages = [...old.pages];
+          newPages[existingPageIdx] = newPages[existingPageIdx].map((m) => {
+            if (m.id === msg.id || (m.client_id && msg.client_id && m.client_id === msg.client_id)) {
+              return {
+                ...m,
+                ...msg,
+                client_id: m.client_id || msg.client_id,
+                id: m.id.startsWith('temp-') ? msg.id : m.id,
+                reply_details: msg.reply_details || m.reply_details,
+                reply_to: msg.reply_to || m.reply_to,
+                is_optimistic: false,
+              };
+            }
+            return m;
+          });
+          return { ...old, pages: newPages };
+        }
+
+        // Not found — append to the last page
+        const newPages = [...old.pages];
+        const lastPageIdx = newPages.length - 1;
+        newPages[lastPageIdx] = [...newPages[lastPageIdx], msg];
+        return { ...old, pages: newPages };
+      });
+    };
+
+    const updateChatListMessageInCache = (msg: Message) => {
+      const normalizedMessage = {
+        ...msg,
+        attachments: msg.attachments || [],
+      } as Message;
+
+      queryClient.setQueryData(['chats'], (old: InfiniteData<FullChat[]> | undefined) =>
+        updateChatMessageIfMatches(
+          old,
+          msg.chat_id,
+          (last) => last?.id === msg.id,
+          (chat) => ({ ...chat, messages: [normalizedMessage] }),
+        ),
+      );
+
+      queryClient.setQueryData<InfiniteData<Message[]>>(['messages', msg.chat_id], (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          pages: old.pages.map((page: Message[]) =>
+            page.map((m) => {
+              if (m.id === normalizedMessage.id) {
+                return {
+                  ...m,
+                  ...normalizedMessage,
+                  reply_details: normalizedMessage.reply_details || m.reply_details,
+                  reply_to: normalizedMessage.reply_to || m.reply_to,
+                };
+              }
+              return m;
+            }),
+          ),
+        };
+      });
+    };
+
     const handleMessageInsert = async (payload: RealtimeMessagePayload) => {
       if (!payload.new || typeof payload.new !== 'object' || !('id' in payload.new)) return;
 
       const nakedMessage = payload.new as Message;
-
-      const updateMessageInCache = (msg: Message) => {
-        queryClient.setQueryData(['chats'], (old: InfiniteData<FullChat[]> | undefined) =>
-          upsertChatLastMessage(old, msg.chat_id, msg),
-        );
-        if (!hasChatInCache(msg.chat_id)) {
-          void hydrateAndUpsertChat(msg.chat_id);
-        }
-
-        queryClient.setQueryData<InfiniteData<Message[]>>(['messages', msg.chat_id], (old) => {
-          if (!old) return old;
-
-          const existingPageIdx = old.pages.findIndex((page) =>
-            page.some((m) => m.id === msg.id || (m.client_id && m.client_id === msg.client_id)),
-          );
-
-          if (existingPageIdx !== -1) {
-            const newPages = [...old.pages];
-            newPages[existingPageIdx] = newPages[existingPageIdx].map((m) => {
-              if (m.id === msg.id || (m.client_id && m.client_id === msg.client_id)) {
-                return {
-                  ...m,
-                  ...msg,
-                  client_id: m.client_id || msg.client_id,
-                  id: m.id.startsWith('temp-') ? msg.id : m.id,
-                  reply_details: msg.reply_details || m.reply_details,
-                  reply_to: msg.reply_to || m.reply_to,
-                  is_optimistic: false,
-                };
-              }
-              return m;
-            });
-            return { ...old, pages: newPages };
-          }
-
-          const newPages = [...old.pages];
-          const lastPageIdx = newPages.length - 1;
-          newPages[lastPageIdx] = [...newPages[lastPageIdx], msg];
-
-          return { ...old, pages: newPages };
-        });
-      };
 
       const isFromMe = nakedMessage.sender_id === user.id;
       const needsHydration = !!nakedMessage.reply_to_id && !nakedMessage.reply_to;
@@ -225,47 +265,12 @@ export function useChatsRealtime(user: User | null) {
       const nakedMessage = payload.new as Message;
       if (!nakedMessage.id || !nakedMessage.chat_id) return;
 
-      const updateMessageInCache = (msg: Message) => {
-        const normalizedMessage = {
-          ...msg,
-          attachments: msg.attachments || [],
-        } as Message;
+      updateChatListMessageInCache(nakedMessage);
 
-        queryClient.setQueryData(['chats'], (old: InfiniteData<FullChat[]> | undefined) =>
-          updateChatMessageIfMatches(
-            old,
-            msg.chat_id,
-            (last) => last?.id === msg.id,
-            (chat) => ({ ...chat, messages: [normalizedMessage] }),
-          ),
-        );
-
-        queryClient.setQueryData<InfiniteData<Message[]>>(['messages', msg.chat_id], (old) => {
-          if (!old) return old;
-          return {
-            ...old,
-            pages: old.pages.map((page: Message[]) =>
-              page.map((m) => {
-                if (m.id === normalizedMessage.id) {
-                  return {
-                    ...m,
-                    ...normalizedMessage,
-                    reply_details: normalizedMessage.reply_details || m.reply_details,
-                    reply_to: normalizedMessage.reply_to || m.reply_to,
-                  };
-                }
-                return m;
-              }),
-            ),
-          };
-        });
-      };
-
-      updateMessageInCache(nakedMessage);
-
+      // Also fetch the hydrated version to ensure reply_to data is up to date
       try {
         const fullMessage = await messagesApi.getMessage(nakedMessage.id);
-        updateMessageInCache(fullMessage);
+        updateChatListMessageInCache(fullMessage);
       } catch (error) {
         if (process.env.NODE_ENV === 'development') {
           console.warn('Failed to fetch hydrated message for realtime update:', error);

@@ -3,18 +3,17 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "preinstall": "npx only-allow pnpm",
     "dev": "next dev --webpack",
     "dev:webpack": "NEXT_WEBPACK_USEPOLLING=true next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint src",
     "format": "biome format --write ./src",
-    "check": "biome check --write ./src && pnpm lint",
-    "setup": "pnpm install",
-    "bootstrap": "pnpm install && pnpm generate-types",
-    "deps:update": "pnpm up --latest",
-    "verify": "pnpm lint && pnpm exec tsc --noEmit && pnpm build",
+    "check": "biome check --write ./src && npm run lint",
+    "setup": "npm install",
+    "bootstrap": "npm install && npm run generate-types",
+    "deps:update": "npx npm-check-updates --upgrade && npm install",
+    "verify": "npm run lint && npx tsc --noEmit && npm run build",
     "xml": "npx repomix",
     "generate-types": "node scripts/update-types.mjs",
     "push-migrations": "node scripts/push-migrations.mjs"
@@ -51,6 +50,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.7",
+    "@supabase/cli": "^1.0.0",
     "@tailwindcss/postcss": "^4.2.1",
     "@types/node": "^25.5.0",
     "@types/pg": "^8.18.0",
@@ -68,6 +68,6 @@
   },
   "engines": {
     "node": ">=22.0.0",
-    "pnpm": ">=10.0.0"
+    "npm": ">=10.0.0"
   }
 }

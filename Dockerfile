@@ -1,18 +1,16 @@
 ﻿FROM node:22-alpine AS base
-RUN npm install -g pnpm@10.28.1
 WORKDIR /app
 
 FROM base AS deps
-COPY package.json pnpm-lock.yaml .npmrc* ./
-# Встановлюємо всі залежності (включаючи dev)
-RUN pnpm install --frozen-lockfile
+COPY package.json package-lock.json ./
+RUN npm ci --only=production
 
 FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
-RUN pnpm build
+RUN npm run build
 
 FROM node:22-alpine AS runner
 WORKDIR /app
@@ -22,7 +20,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN addgroup -g 1001 -S nodejs
 RUN adduser -S nextjs -u 1001
 
-# Копіюємо необхідні файли для standalone режиму
+# Copy necessary files for standalone mode
 COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static

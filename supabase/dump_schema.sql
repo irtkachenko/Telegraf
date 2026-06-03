@@ -224,9 +224,9 @@ CREATE OR REPLACE FUNCTION "public"."handle_new_user"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     AS $$
 BEGIN
-  INSERT INTO public.user (id, email, name, image)
+  INSERT INTO public.users (id, email, name, image)
   VALUES (
-    new.id::text, -- Обов'язково додаємо ::text тут
+    new.id::text,
     new.email, 
     new.raw_user_meta_data->>'full_name', 
     new.raw_user_meta_data->>'avatar_url'
@@ -243,7 +243,7 @@ CREATE OR REPLACE FUNCTION "public"."handle_user_delete"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     AS $$
 BEGIN
-  DELETE FROM public.user WHERE id = old.id::text;
+  DELETE FROM public.users WHERE id = old.id::text;
   RETURN old;
 END;
 $$;
