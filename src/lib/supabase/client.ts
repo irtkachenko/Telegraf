@@ -12,7 +12,7 @@ export function createClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
-  if (!supabaseUrl || !supabaseAnonKey) {
+  if (!(supabaseUrl && supabaseAnonKey)) {
     console.error('Missing Supabase environment variables');
   }
 
@@ -26,7 +26,7 @@ export function createClient() {
 
         const response = await fetch(url, options);
 
-        if (!response.ok && !skipToast) {
+        if (!(response.ok || skipToast)) {
           if (response.status === 401) return response;
 
           try {
@@ -34,11 +34,15 @@ export function createClient() {
             const message =
               errorData?.message || errorData?.error_description || response.statusText;
 
-            const error = new Error(`HTTP ${response.status}: ${message}`) as Error & { status: number };
+            const error = new Error(`HTTP ${response.status}: ${message}`) as Error & {
+              status: number;
+            };
             error.status = response.status;
             handleError(error, 'SupabaseFetch');
           } catch {
-            const error = new Error(`HTTP ${response.status}: ${response.statusText}`) as Error & { status: number };
+            const error = new Error(`HTTP ${response.status}: ${response.statusText}`) as Error & {
+              status: number;
+            };
             error.status = response.status;
             handleError(error, 'SupabaseFetch');
           }

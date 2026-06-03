@@ -1,8 +1,8 @@
-import { supabase } from '@/lib/supabase/client';
 import { sanitizeSearchQuery } from '@/lib/sanitize';
+import { supabase } from '@/lib/supabase/client';
 import { handleError } from '@/shared/lib/error-handler';
 import { NetworkError } from '@/shared/lib/errors';
-import type { User } from '@/types';
+import type { AppUser } from '@/types';
 
 export const contactsApi = {
   /**
@@ -29,6 +29,6 @@ export const contactsApi = {
       throw networkError;
     }
 
-    return data as User[];
+    return data as AppUser[];
   },
 };

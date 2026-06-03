@@ -21,7 +21,7 @@ import { usePresence } from '@/hooks/user';
 import { formatRelativeTime } from '@/lib/date-utils';
 import { extractStorageRef } from '@/lib/storage-utils';
 import { useStorageStore } from '@/store/useStorageStore';
-import type { Message, User } from '@/types';
+import type { Message } from '@/types';
 
 export default function ChatPage() {
   const SMART_SCROLL_NEAR_BOTTOM_ITEMS = 10;
@@ -96,7 +96,7 @@ export default function ChatPage() {
 
   // Redirect on error
   useEffect(() => {
-    if (!isAuthLoading && !isChatLoading && (isError || (!chat && !isMessagesLoading))) {
+    if (!(isAuthLoading || isChatLoading) && (isError || !(chat || isMessagesLoading))) {
       router.replace('/');
     }
   }, [isAuthLoading, isChatLoading, chat, isError, router, isMessagesLoading]);
@@ -161,7 +161,7 @@ export default function ChatPage() {
     }
 
     const prevMessages = prevMessagesRef.current;
-    const isDataReady = !isMessagesLoading && !isChatLoading;
+    const isDataReady = !(isMessagesLoading || isChatLoading);
 
     if (isDataReady && !initialScrollDoneRef.current) {
       initialScrollDoneRef.current = true;
@@ -173,7 +173,8 @@ export default function ChatPage() {
     if (prevMessages.length > 0) {
       const prevLastKey = getMessageKey(prevMessages[prevMessages.length - 1]);
       const currentLastKey = getMessageKey(messages[messages.length - 1]);
-      const wasAppendedAtBottom = messages.length > prevMessages.length && prevLastKey !== currentLastKey;
+      const wasAppendedAtBottom =
+        messages.length > prevMessages.length && prevLastKey !== currentLastKey;
 
       if (wasAppendedAtBottom) {
         const prevLastIndexInCurrent = messages.findIndex((m) => getMessageKey(m) === prevLastKey);
@@ -183,7 +184,9 @@ export default function ChatPage() {
             : messages.slice(prevLastIndexInCurrent + 1);
 
         const hasOptimisticAppend = appendedMessages.some((m) => m.is_optimistic);
-        const hasOwnAppend = appendedMessages.some((m) => !!m.sender_id && m.sender_id === user?.id);
+        const hasOwnAppend = appendedMessages.some(
+          (m) => !!m.sender_id && m.sender_id === user?.id,
+        );
         const hasIncomingAppend = appendedMessages.some(
           (m) => !!m.sender_id && m.sender_id !== user?.id && !m.is_optimistic,
         );
@@ -238,7 +241,7 @@ export default function ChatPage() {
     return map;
   }, [messages]);
 
-  const otherParticipant = chat?.participants?.find((p: User) => p.id !== user?.id);
+  const otherParticipant = chat?.participants?.find((p) => p.id !== user?.id);
   const otherParticipantReadId =
     user?.id && chat
       ? chat.user_id === user.id
@@ -259,7 +262,10 @@ export default function ChatPage() {
         </div>
       )}
       {/* Header */}
-      <div className="px-3 sm:px-6 py-3 sm:py-4 border-b border-white/5 flex items-center justify-between backdrop-blur-xl bg-black/40 sticky top-0 z-20" style={{ opacity: isLoaderVisible ? 0 : 1 }}>
+      <div
+        className="px-3 sm:px-6 py-3 sm:py-4 border-b border-white/5 flex items-center justify-between backdrop-blur-xl bg-black/40 sticky top-0 z-20"
+        style={{ opacity: isLoaderVisible ? 0 : 1 }}
+      >
         <div className="flex items-center gap-3 sm:gap-4">
           <div className="relative w-10 h-10 sm:w-11 sm:h-11 rounded-full overflow-hidden border border-white/10 shadow-lg">
             <Image
@@ -324,7 +330,7 @@ export default function ChatPage() {
               const lastIndex = messages.length - 1;
               if (lastIndex < 0) {
                 isNearBottomRef.current = true;
-                const next = isAtBottomRef.current || true;
+                const next = true;
                 setIsCloseToBottom((prev) => (prev === next ? prev : next));
                 return;
               }

@@ -16,8 +16,8 @@ interface UseStorageUrlReturn {
   error: Error | null;
 }
 
-import { useStorageStore } from '@/store/useStorageStore';
 import { storageConfig } from '@/config/storage.config';
+import { useStorageStore } from '@/store/useStorageStore';
 
 /**
  * Hook for handling storage URLs with automatic detection of private vs public buckets.
@@ -48,7 +48,8 @@ export function useStorageUrl(): UseStorageUrlReturn {
     async (bucket: string, path: string, options?: SignedUrlOptions): Promise<string> => {
       const cacheKey = `${bucket}:${path}`;
       const cached = urlCache[cacheKey];
-      if (cached && cached.expiresAt > Date.now() + 60000) { // 1 min buffer
+      if (cached && cached.expiresAt > Date.now() + 60000) {
+        // 1 min buffer
         return cached.url;
       }
 
@@ -64,7 +65,7 @@ export function useStorageUrl(): UseStorageUrlReturn {
     async (bucket: string, path: string, options?: SignedUrlOptions): Promise<string> => {
       const cacheKey = `${bucket}:${path}`;
       const cached = urlCache[cacheKey];
-      
+
       // If we have a valid cache, return immediately without loading state
       if (cached && cached.expiresAt > Date.now() + 60000) {
         return cached.url;
@@ -72,23 +73,23 @@ export function useStorageUrl(): UseStorageUrlReturn {
 
       setIsLoading(true);
       setError(null);
-      
+
       // Update global state so components know we're fetching
       setMediaState(cacheKey, { isLoading: true, isLoaded: false, hasError: false });
 
       try {
         const url = await storageApi.getUrl(bucket, path, options);
         const expiresIn = options?.expiresIn || storageConfig.defaults.signedUrlExpiry;
-        
+
         setUrl(cacheKey, { url, expiresAt: Date.now() + expiresIn * 1000 });
         setMediaState(cacheKey, { isLoaded: true, hasError: false, isLoading: false });
-        
+
         return url;
       } catch (err) {
         const error = err instanceof Error ? err : new Error(String(err));
         setError(error);
         setMediaState(cacheKey, { isLoaded: false, hasError: true, isLoading: false });
-        
+
         throw new NetworkError(
           `Failed to get storage URL for ${bucket}/${path}`,
           `${bucket}/${path}`,

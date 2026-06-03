@@ -29,9 +29,7 @@ function RenderGuard({ children }: { children: React.ReactNode }) {
 
     if (now - lastResetTime.current >= 1000) {
       if (commitCount.current > 40 && now - lastWarnTime.current > 5000) {
-        console.warn(
-          `[RenderGuard] High commit rate detected: ${commitCount.current} commits/sec`,
-        );
+        console.warn(`[RenderGuard] High commit rate detected: ${commitCount.current} commits/sec`);
         lastWarnTime.current = now;
       }
       commitCount.current = 0;

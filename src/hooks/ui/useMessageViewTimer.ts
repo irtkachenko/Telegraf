@@ -43,7 +43,7 @@ export function useMessageViewTimer(): MessageViewTimer {
   // Припиняємо відстеження перегляду
   const stopViewing = useCallback((messageId: string) => {
     const timer = timersRef.current.get(messageId);
-    if (!timer || !timer.isViewing) return;
+    if (!(timer && timer.isViewing)) return;
 
     const viewDuration = Date.now() - timer.startTime;
     timer.totalTime += viewDuration;

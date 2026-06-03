@@ -52,9 +52,7 @@ function ContactsListBase({ query }: ContactsListProps) {
   return (
     <div className="flex-1 overflow-y-auto sidebar-no-scrollbar px-2 space-y-1">
       <div className="px-4 mb-2">
-        <h2 className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
-          Контакти
-        </h2>
+        <h2 className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Контакти</h2>
       </div>
       {users.map((user) => (
         <ContactItem

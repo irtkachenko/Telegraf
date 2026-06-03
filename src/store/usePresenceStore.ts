@@ -72,19 +72,19 @@ async function updateLastSeen(): Promise<void> {
 
   const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/rpc/update_last_seen`;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  
+
   // Use fetch with keepalive for highest reliability on page leave
   if (typeof window !== 'undefined' && anonKey) {
     try {
       const session = await supabase.auth.getSession();
       const token = session.data.session?.access_token;
-      
+
       void fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'apikey': anonKey,
-          'Authorization': token ? `Bearer ${token}` : '',
+          apikey: anonKey,
+          Authorization: token ? `Bearer ${token}` : '',
         },
         body: JSON.stringify({}),
         keepalive: true,

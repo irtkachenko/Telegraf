@@ -7,8 +7,8 @@ import { toast } from 'sonner';
 import { useSupabaseAuth } from '@/components/auth/AuthProvider';
 import { useEditMessage } from '@/hooks/chat';
 import { useSendMessageWithFiles } from '@/hooks/chat/useSendMessageWithFiles';
-import { useOptimisticAttachmentLazy } from '@/hooks/useOptimisticAttachmentLazy';
 import { useStorageLimits } from '@/hooks/useDynamicStorageConfig';
+import { useOptimisticAttachmentLazy } from '@/hooks/useOptimisticAttachmentLazy';
 import { cn } from '@/lib/utils';
 import { handleError } from '@/shared/lib/error-handler';
 import { NetworkError } from '@/shared/lib/errors';
@@ -79,7 +79,7 @@ export default function ChatInput({
     const hasFiles = attachments.length > 0;
     const isEditingFlow = !!editingMessage;
 
-    if (!trimmed && !hasFiles) return;
+    if (!(trimmed || hasFiles)) return;
 
     if (isEditingFlow && !trimmed) {
       toast.error('Повідомлення не може бути порожнім');
@@ -203,7 +203,7 @@ export default function ChatInput({
         {isButtonVisible && (
           <button
             type="submit"
-            disabled={sendMessageWithFiles.isPending || (!content.trim() && !hasAttachments)}
+            disabled={sendMessageWithFiles.isPending || !(content.trim() || hasAttachments)}
             className="p-3 mb-0.5 rounded-full bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-50 transition-all shadow-lg shadow-blue-600/20 shrink-0"
           >
             <Send size={20} className={sendMessageWithFiles.isPending ? 'animate-pulse' : ''} />

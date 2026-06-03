@@ -19,7 +19,7 @@ function PresenceIndicatorBase({ userId, className, showOffline = false }: Prese
       className={cn(
         'rounded-full border-2 border-black',
         isOnline ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]' : 'bg-gray-500',
-        !isOnline && !showOffline && 'hidden',
+        !(isOnline || showOffline) && 'hidden',
         className,
       )}
     />

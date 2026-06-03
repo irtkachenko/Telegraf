@@ -1,1 +1,1 @@
-export * from './contacts.service';
+export { contactsApi } from './contacts.service';

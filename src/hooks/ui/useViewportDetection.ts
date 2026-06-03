@@ -68,19 +68,16 @@ export function useViewportDetection(): ViewportDetectionResult {
   }, []);
 
   // Перевіряємо чи повідомлення видиме
-  const isMessageVisible = useCallback(
-    (messageId: string) => {
-      return visibleMessagesRef.current.has(messageId);
-    },
-    [],
-  );
+  const isMessageVisible = useCallback((messageId: string) => {
+    return visibleMessagesRef.current.has(messageId);
+  }, []);
 
   // Cleanup при unmount
   useEffect(() => {
     const observer = observerRef.current;
     const elementsMap = messageElementsRef.current;
     const visibleSet = visibleMessagesRef.current;
-    
+
     return () => {
       observer?.disconnect();
       elementsMap.clear();

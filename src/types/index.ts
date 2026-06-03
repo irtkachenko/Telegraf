@@ -1,8 +1,5 @@
 import type { Database } from './supabase';
 
-/**
- * Metadata from various OAuth providers
- */
 export interface UserMetadata {
   name?: string;
   full_name?: string;
@@ -11,9 +8,6 @@ export interface UserMetadata {
   provider?: string;
 }
 
-/**
- * Combined user type merging Supabase Auth and Database profile
- */
 export interface AppUser {
   id: string;
   email: string;
@@ -27,9 +21,6 @@ export interface AppUser {
   display_name: string;
 }
 
-/**
- * Centralized Attachment interface
- */
 export interface Attachment {
   id: string;
   type: 'image' | 'video' | 'file';
@@ -45,9 +36,6 @@ export interface Attachment {
   uploading?: boolean;
 }
 
-/**
- * UI attachment shape for previews before upload completes.
- */
 export interface OptimisticAttachment extends Attachment {
   file?: File;
   previewUrl: string;
@@ -56,13 +44,10 @@ export interface OptimisticAttachment extends Attachment {
   progress?: number;
 }
 
-// Export AppUser as User for backward compatibility
-export type User = AppUser;
-export type Chat = Database['public']['Tables']['chats']['Row'];
+export type ChatRow = Database['public']['Tables']['chats']['Row'];
+
 export type Message = Database['public']['Tables']['messages']['Row'] & {
-  // Override attachments to be properly typed
   attachments: Attachment[] | null;
-  // UI-specific fields with snake_case naming
   reply_details?: {
     id: string;
     sender: { name?: string | null };
@@ -71,8 +56,7 @@ export type Message = Database['public']['Tables']['messages']['Row'] & {
     attachments?: Attachment[];
   } | null;
   reply_to?: Message;
-  sender?: User | null;
-  // Joined user data from optimized query
+  sender?: AppUser | null;
   user?: {
     id: string;
     name?: string | null;
@@ -81,12 +65,11 @@ export type Message = Database['public']['Tables']['messages']['Row'] & {
   is_optimistic?: boolean;
 };
 
-// Extended types for UI with relations
-export type FullChat = Chat & {
+export type FullChat = ChatRow & {
   messages: Message[];
-  participants: User[];
-  recipient?: User | null;
-  user?: User | null;
+  participants: AppUser[];
+  recipient?: AppUser | null;
+  user?: AppUser | null;
   user_last_read?: { id: string; created_at: string } | null;
   recipient_last_read?: { id: string; created_at: string } | null;
 };

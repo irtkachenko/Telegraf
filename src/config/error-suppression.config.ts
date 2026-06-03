@@ -17,7 +17,7 @@ export const ERROR_SUPPRESSION_CONFIG: ErrorSuppressionRule = {
     401, // Authentication errors - expected when session expires
     404, // Not found is often an expected result
   ],
-  
+
   // Specific error codes that should be silent
   codes: [
     'SIGNED_URL_ERROR',
@@ -26,7 +26,7 @@ export const ERROR_SUPPRESSION_CONFIG: ErrorSuppressionRule = {
     'INITIAL_USER_ERROR',
     'UPDATE_LAST_SEEN_ERROR',
   ],
-  
+
   // String patterns in error messages that should trigger suppression
   patterns: [
     'object not found',
@@ -50,7 +50,7 @@ export const ERROR_SUPPRESSION_CONFIG: ErrorSuppressionRule = {
     'AuthProvider',
     'Auth',
     'UpdateLastSeen',
-  ]
+  ],
 };
 
 interface ErrorLike {
@@ -76,7 +76,7 @@ export function shouldSuppressError(error: ErrorLike | unknown, context?: string
     const isStorageContext = context && ERROR_SUPPRESSION_CONFIG.context?.includes(context);
     const hasPathPattern = message.includes('attachments/') || message.includes('storage');
     const isAuthError = status === 401; // 401 errors are often session-related
-    
+
     if (isStorageContext || hasPathPattern || isAuthError) return true;
   }
 
@@ -84,7 +84,7 @@ export function shouldSuppressError(error: ErrorLike | unknown, context?: string
   if (code && ERROR_SUPPRESSION_CONFIG.codes?.includes(code)) return true;
 
   // Check message patterns
-  if (ERROR_SUPPRESSION_CONFIG.patterns?.some(pattern => message.includes(pattern))) {
+  if (ERROR_SUPPRESSION_CONFIG.patterns?.some((pattern) => message.includes(pattern))) {
     // Only suppress if it's a known non-critical context
     if (context && ERROR_SUPPRESSION_CONFIG.context?.includes(context)) return true;
   }

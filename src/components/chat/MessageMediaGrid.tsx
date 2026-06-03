@@ -5,9 +5,9 @@ import Image from 'next/image';
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { storageConfig } from '@/config/storage.config';
 import { useStorageUrl } from '@/hooks/useStorageUrl';
-import { useStorageStore } from '@/store/useStorageStore';
 import { extractStorageRef } from '@/lib/storage-utils';
 import { cn } from '@/lib/utils';
+import { useStorageStore } from '@/store/useStorageStore';
 import type { Attachment } from '@/types';
 
 const ImageModal = lazy(() => import('./ImageModal'));
@@ -58,15 +58,9 @@ const MediaPlaceholder = ({
 
 export default function MessageMediaGrid({ items, onMediaSettled }: MessageMediaGridProps) {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
-  
+
   // Zustand store
-  const { 
-    urlCache, 
-    failedUrls, 
-    setUrl, 
-    addFailedUrl, 
-    removeFailedUrl 
-  } = useStorageStore();
+  const { urlCache, failedUrls, setUrl, addFailedUrl, removeFailedUrl } = useStorageStore();
 
   const { getUrl } = useStorageUrl();
   // Simple media states map instead of complex refs
@@ -97,11 +91,13 @@ export default function MessageMediaGrid({ items, onMediaSettled }: MessageMedia
       if (failedUrls.has(originalUrl)) return;
 
       // Set loading state
-      setLocalMediaStates(prev => new Map(prev).set(cacheKey, { 
-        isLoading: true, 
-        hasError: false, 
-        isLoaded: false 
-      }));
+      setLocalMediaStates((prev) =>
+        new Map(prev).set(cacheKey, {
+          isLoading: true,
+          hasError: false,
+          isLoaded: false,
+        }),
+      );
 
       const ref = extractStorageRef(originalUrl);
       if (!ref) return;
@@ -110,25 +106,28 @@ export default function MessageMediaGrid({ items, onMediaSettled }: MessageMedia
         const resolvedUrl = await getUrl(ref.bucket, ref.path);
         const cacheData = { url: resolvedUrl, expiresAt: Date.now() + expiryMs };
         setUrl(cacheKey, cacheData);
-        
+
         removeFailedUrl(originalUrl);
-        setLocalMediaStates(prev => new Map(prev).set(cacheKey, { 
-          isLoading: false, 
-          hasError: false, 
-          isLoaded: true 
-        }));
+        setLocalMediaStates((prev) =>
+          new Map(prev).set(cacheKey, {
+            isLoading: false,
+            hasError: false,
+            isLoaded: true,
+          }),
+        );
       } catch {
         addFailedUrl(originalUrl);
-        setLocalMediaStates(prev => new Map(prev).set(cacheKey, { 
-          isLoading: false, 
-          hasError: true, 
-          isLoaded: false 
-        }));
+        setLocalMediaStates((prev) =>
+          new Map(prev).set(cacheKey, {
+            isLoading: false,
+            hasError: true,
+            isLoaded: false,
+          }),
+        );
       }
     });
   }, [items, getUrl, urlCache, setUrl, addFailedUrl, removeFailedUrl, failedUrls]);
 
-  
   // Process attachment URLs for rendering
   const processedItems = useMemo(() => {
     if (!items || items.length === 0) {
@@ -147,29 +146,35 @@ export default function MessageMediaGrid({ items, onMediaSettled }: MessageMedia
     });
   }, [items, urlCache]);
 
-  const handleImageError = useCallback((url: string) => {
-    addFailedUrl(url);
-    // Update all media states that share this URL (unlikely but safe)
-    const updatedStates = new Map(localMediaStates);
-    Object.keys(Object.fromEntries(updatedStates)).forEach((key) => {
-      if (key.includes(url)) {
-        updatedStates.set(key, { isLoading: false, hasError: true, isLoaded: false });
-      }
-    });
-    setLocalMediaStates(updatedStates);
-    onMediaSettled?.();
-  }, [addFailedUrl, localMediaStates, onMediaSettled]);
+  const handleImageError = useCallback(
+    (url: string) => {
+      addFailedUrl(url);
+      // Update all media states that share this URL (unlikely but safe)
+      const updatedStates = new Map(localMediaStates);
+      Object.keys(Object.fromEntries(updatedStates)).forEach((key) => {
+        if (key.includes(url)) {
+          updatedStates.set(key, { isLoading: false, hasError: true, isLoaded: false });
+        }
+      });
+      setLocalMediaStates(updatedStates);
+      onMediaSettled?.();
+    },
+    [addFailedUrl, localMediaStates, onMediaSettled],
+  );
 
-  const handleImageLoad = useCallback((url: string) => {
-    const updatedStates = new Map(localMediaStates);
-    Object.keys(Object.fromEntries(updatedStates)).forEach((key) => {
-      if (key.includes(url)) {
-        updatedStates.set(key, { isLoading: false, hasError: false, isLoaded: true });
-      }
-    });
-    setLocalMediaStates(updatedStates);
-    onMediaSettled?.();
-  }, [localMediaStates, onMediaSettled]);
+  const handleImageLoad = useCallback(
+    (url: string) => {
+      const updatedStates = new Map(localMediaStates);
+      Object.keys(Object.fromEntries(updatedStates)).forEach((key) => {
+        if (key.includes(url)) {
+          updatedStates.set(key, { isLoading: false, hasError: false, isLoaded: true });
+        }
+      });
+      setLocalMediaStates(updatedStates);
+      onMediaSettled?.();
+    },
+    [localMediaStates, onMediaSettled],
+  );
 
   const handleImageLoadStart = useCallback(
     (url: string) => {
@@ -187,7 +192,7 @@ export default function MessageMediaGrid({ items, onMediaSettled }: MessageMedia
   const activeMedia = useMemo(
     () =>
       processedItems.filter(
-        (item) => !item.is_deleted && !failedUrls.has(item.processedUrl || item.url),
+        (item) => !(item.is_deleted || failedUrls.has(item.processedUrl || item.url)),
       ),
     [processedItems, failedUrls],
   );
@@ -336,7 +341,10 @@ export default function MessageMediaGrid({ items, onMediaSettled }: MessageMedia
               const isFailed = failedUrls.has(itemUrl) || item.is_deleted || mediaState.hasError;
 
               // Показуємо заглушку, якщо вантажиться або якщо сталася помилка
-              const shouldShowPlaceholder = (mediaState.isLoading && !item.url.startsWith('blob:')) || isFailed || item.uploading;
+              const shouldShowPlaceholder =
+                (mediaState.isLoading && !item.url.startsWith('blob:')) ||
+                isFailed ||
+                item.uploading;
 
               // Показуємо контент: або коли успішно завантажено, або якщо це blob (оптимістичний UI)
               // АЛЕ при завантаженні blob (uploading) ми не показуємо контент взагалі
@@ -350,48 +358,49 @@ export default function MessageMediaGrid({ items, onMediaSettled }: MessageMedia
                       isLoading={mediaState.isLoading || item.uploading}
                     />
                   )}
-                      {shouldShowContent && (
-                        <button
-                          type="button"
-                          onClick={() => handleMediaClick(0)}
-                          className="w-full h-full relative block"
+                  {shouldShowContent && (
+                    <button
+                      type="button"
+                      onClick={() => handleMediaClick(0)}
+                      className="w-full h-full relative block"
+                    >
+                      {item.type === 'video' ? (
+                        <video
+                          src={itemUrl}
+                          className="w-full h-full object-contain bg-black"
+                          onLoadedData={() => handleImageLoad(itemUrl)}
+                          onError={() => handleImageError(itemUrl)}
                         >
-                          {item.type === 'video' ? (
-                            <video
-                              src={itemUrl}
-                              className="w-full h-full object-contain bg-black"
-                              onLoadedData={() => handleImageLoad(itemUrl)}
-                              onError={() => handleImageError(itemUrl)}
-                            >
-                              <track kind="captions" />
-                            </video>
-                          ) : (
-                            <Image
-                              src={itemUrl}
-                              alt=""
-                              fill
-                              className="object-contain bg-neutral-900/10"
-                              unoptimized
-                              onLoadStart={() => handleImageLoadStart(itemUrl)}
-                              onLoad={() => handleImageLoad(itemUrl)}
-                              onError={() => handleImageError(itemUrl)}
-                              sizes="(max-width: 768px) 280px, 400px"
-                            />
-                          )}
-                          
-                          {/* Loader overlay for uploading or initial loading */}
-                          {(item.uploading || (mediaState.isLoading && !item.url.startsWith('blob:'))) && (
-                            <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] flex flex-col items-center justify-center z-10">
-                              <div className="w-8 h-8 border-2 border-white/20 border-t-blue-500 rounded-full animate-spin mb-2" />
-                              {item.uploading && (
-                                <span className="text-[10px] text-white/70 font-bold uppercase tracking-widest">
-                                  Надсилаємо...
-                                </span>
-                              )}
-                            </div>
-                          )}
-                        </button>
+                          <track kind="captions" />
+                        </video>
+                      ) : (
+                        <Image
+                          src={itemUrl}
+                          alt=""
+                          fill
+                          className="object-contain bg-neutral-900/10"
+                          unoptimized
+                          onLoadStart={() => handleImageLoadStart(itemUrl)}
+                          onLoad={() => handleImageLoad(itemUrl)}
+                          onError={() => handleImageError(itemUrl)}
+                          sizes="(max-width: 768px) 280px, 400px"
+                        />
                       )}
+
+                      {/* Loader overlay for uploading or initial loading */}
+                      {(item.uploading ||
+                        (mediaState.isLoading && !item.url.startsWith('blob:'))) && (
+                        <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] flex flex-col items-center justify-center z-10">
+                          <div className="w-8 h-8 border-2 border-white/20 border-t-blue-500 rounded-full animate-spin mb-2" />
+                          {item.uploading && (
+                            <span className="text-[10px] text-white/70 font-bold uppercase tracking-widest">
+                              Надсилаємо...
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </button>
+                  )}
                 </>
               );
             })()}

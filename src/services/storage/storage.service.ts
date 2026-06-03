@@ -123,7 +123,7 @@ export const storageApi = {
   ) => {
     const { error } = await supabase.storage.from(bucket).upload(path, file, {
       cacheControl: options?.cacheControl || '3600',
-      upsert: options?.upsert || false,
+      upsert: options?.upsert,
     });
 
     if (error) throw error;

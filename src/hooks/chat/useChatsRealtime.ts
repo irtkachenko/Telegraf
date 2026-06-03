@@ -5,14 +5,14 @@ import { type InfiniteData, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
 import {
   chatsApi,
+  messagesApi,
   type RealtimeChatPayload,
   type RealtimeMessagePayload,
   realtimeApi,
-  messagesApi,
 } from '@/services';
 import { handleError } from '@/shared/lib/error-handler';
 import { NetworkError } from '@/shared/lib/errors';
-import type { Chat, FullChat, Message } from '@/types';
+import type { ChatRow, FullChat, Message } from '@/types';
 import {
   removeChat,
   updateChatMessageIfMatches,
@@ -28,7 +28,7 @@ function normalizeChat(chat: FullChat): FullChat {
   };
 }
 
-function toFallbackFullChat(row: Chat): FullChat {
+function toFallbackFullChat(row: ChatRow): FullChat {
   return {
     ...row,
     messages: [],
@@ -38,7 +38,10 @@ function toFallbackFullChat(row: Chat): FullChat {
   };
 }
 
-function isCurrentUserParticipant(chat: { user_id: string; recipient_id: string | null }, userId: string) {
+function isCurrentUserParticipant(
+  chat: { user_id: string; recipient_id: string | null },
+  userId: string,
+) {
   return chat.user_id === userId || chat.recipient_id === userId;
 }
 
@@ -92,7 +95,7 @@ export function useChatsRealtime(user: User | null) {
       });
     };
 
-    const patchChatInCaches = (chatPatch: Partial<Chat> & { id: string }) => {
+    const patchChatInCaches = (chatPatch: Partial<ChatRow> & { id: string }) => {
       queryClient.setQueryData(['chats'], (old: InfiniteData<FullChat[]> | undefined) =>
         old
           ? {
@@ -110,7 +113,7 @@ export function useChatsRealtime(user: User | null) {
       });
     };
 
-    const hydrateAndUpsertChat = async (chatId: string, fallback?: Chat) => {
+    const hydrateAndUpsertChat = async (chatId: string, fallback?: ChatRow) => {
       try {
         const fullChat = await chatsApi.getChatById(chatId);
         if (fullChat) {
@@ -169,14 +172,20 @@ export function useChatsRealtime(user: User | null) {
 
         // Try to find an existing page where this message (by id or client_id) already exists
         const existingPageIdx = old.pages.findIndex((page) =>
-          page.some((m) => m.id === msg.id || (m.client_id && msg.client_id && m.client_id === msg.client_id)),
+          page.some(
+            (m) =>
+              m.id === msg.id || (m.client_id && msg.client_id && m.client_id === msg.client_id),
+          ),
         );
 
         if (existingPageIdx !== -1) {
           // Update in-place within the existing page
           const newPages = [...old.pages];
           newPages[existingPageIdx] = newPages[existingPageIdx].map((m) => {
-            if (m.id === msg.id || (m.client_id && msg.client_id && m.client_id === msg.client_id)) {
+            if (
+              m.id === msg.id ||
+              (m.client_id && msg.client_id && m.client_id === msg.client_id)
+            ) {
               return {
                 ...m,
                 ...msg,
@@ -263,7 +272,7 @@ export function useChatsRealtime(user: User | null) {
       if (!payload.new || typeof payload.new !== 'object' || !('id' in payload.new)) return;
 
       const nakedMessage = payload.new as Message;
-      if (!nakedMessage.id || !nakedMessage.chat_id) return;
+      if (!(nakedMessage.id && nakedMessage.chat_id)) return;
 
       updateChatListMessageInCache(nakedMessage);
 
@@ -319,7 +328,7 @@ export function useChatsRealtime(user: User | null) {
     const handleChatInsert = (payload: RealtimeChatPayload) => {
       if (!payload.new || typeof payload.new !== 'object' || !('id' in payload.new)) return;
 
-      const chatRow = payload.new as Chat;
+      const chatRow = payload.new as ChatRow;
       if (!isCurrentUserParticipant(chatRow, user.id)) return;
 
       void hydrateAndUpsertChat(chatRow.id, chatRow);
@@ -328,7 +337,7 @@ export function useChatsRealtime(user: User | null) {
     const handleChatUpdate = (payload: RealtimeChatPayload) => {
       if (!payload.new || typeof payload.new !== 'object' || !('id' in payload.new)) return;
 
-      const chatRow = payload.new as Chat;
+      const chatRow = payload.new as ChatRow;
       if (!isCurrentUserParticipant(chatRow, user.id)) return;
 
       patchChatInCaches(chatRow);
@@ -391,7 +400,12 @@ export function useChatsRealtime(user: User | null) {
         }
       } catch {
         handleError(
-          new NetworkError('Failed to process realtime chat', 'realtime', 'REALTIME_CHAT_ERROR', 500),
+          new NetworkError(
+            'Failed to process realtime chat',
+            'realtime',
+            'REALTIME_CHAT_ERROR',
+            500,
+          ),
           'useChatsRealtime',
         );
       }

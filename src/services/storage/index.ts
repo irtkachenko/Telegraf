@@ -1,1 +1,1 @@
-export * from './storage.service';
+export { storageApi } from './storage.service';

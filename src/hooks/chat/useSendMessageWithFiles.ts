@@ -336,15 +336,16 @@ export function useSendMessageWithFiles(chatId: string) {
           ...old,
           pages: old.pages.map((page) =>
             page.map((msg) => {
-              const matches = (msg.client_id && msg.client_id === clientId) || 
-                             (msg.client_id && msg.client_id === message.client_id);
-                             
+              const matches =
+                (msg.client_id && msg.client_id === clientId) ||
+                (msg.client_id && msg.client_id === message.client_id);
+
               if (matches) {
                 // ВАЖЛИВО: Ми накладаємо серверні дані на існуючий об'єкт,
                 // зберігаючи client_id та дату. Це ПОВНІСТЮ прибирає мерехтіння.
                 return {
-                  ...msg,      // Початкові дані (з client_id та точною датою)
-                  ...message,  // Дані з сервера (ID, контент)
+                  ...msg, // Початкові дані (з client_id та точною датою)
+                  ...message, // Дані з сервера (ID, контент)
                   client_id: msg.client_id || clientId, // Запасний варіант
 
                   is_optimistic: false,
@@ -394,9 +395,9 @@ async function uploadFileOptimized(
           useWebWorker: true,
         });
       } catch (e) {
-      if (process.env.NODE_ENV === 'development') {
-        console.warn('Стиснення не вдалося, вантажимо оригінал', e);
-      }
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('Стиснення не вдалося, вантажимо оригінал', e);
+        }
       }
     }
 
@@ -416,4 +417,3 @@ async function uploadFileOptimized(
     );
   }
 }
-

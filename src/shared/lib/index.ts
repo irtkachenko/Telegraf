@@ -1,19 +1,11 @@
-/**
- * Centralized error handling system - Public API
- */
-
-// Export error handling utilities
 export {
-  clearErrorHistory,
-  createBoundaryErrorHandler,
   createQueryErrorHandler,
-  getErrorHistory,
   getRetryDelay,
   handleError,
   shouldRetry,
   withErrorHandling,
 } from './error-handler';
-// Export all error classes
+
 export {
   AppError,
   AuthError,
@@ -28,11 +20,3 @@ export {
   PermissionError,
   ValidationError,
 } from './errors';
-
-// TypeScript types
-export interface ErrorLogConfig {
-  enableConsoleLog: boolean;
-  enableToast: boolean;
-  enableRemoteLogging: boolean;
-  remoteEndpoint?: string;
-}

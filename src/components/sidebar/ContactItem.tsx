@@ -8,12 +8,12 @@ import { useGetOrCreateChat } from '@/hooks/chat/useGetOrCreateChat';
 import { formatRelativeTime } from '@/lib/date-utils';
 import { cn } from '@/lib/utils';
 
-import type { User } from '@/types';
+import type { AppUser } from '@/types';
 
 import { PresenceIndicator } from './PresenceIndicator';
 
 interface ContactItemProps {
-  user: User;
+  user: AppUser;
   disabled: boolean;
   onActionStart?: (id: string) => void;
   onActionEnd?: () => void;
@@ -72,7 +72,7 @@ function ContactItemBase({ user, disabled, onActionStart, onActionEnd }: Contact
           <PresenceIndicator userId={user.id} showOffline={false} className="hidden" />
           {user.last_seen && (
             <>
-              <span className="text-[10px] text-gray-600">•</span>
+              <span className="text-[10px] text-gray-600">&bull;</span>
               <p className="text-[10px] text-gray-500">{formatRelativeTime(user.last_seen)}</p>
             </>
           )}

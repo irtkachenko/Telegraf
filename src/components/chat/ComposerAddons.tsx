@@ -24,7 +24,7 @@ export default function ComposerAddons({
   otherParticipantName,
   currentUserId,
 }: ComposerAddonsProps) {
-  if (!replyTo && !editingMessage && attachments.length === 0) return null;
+  if (!(replyTo || editingMessage) && attachments.length === 0) return null;
 
   return (
     <div
@@ -102,10 +102,7 @@ export default function ComposerAddons({
                   animate={{ scale: 1, opacity: 1 }}
                   exit={{ scale: 0.8, opacity: 0 }}
                 >
-                  <AttachmentPreview
-                    attachment={attachment}
-                    onRemove={onAttachmentRemove}
-                  />
+                  <AttachmentPreview attachment={attachment} onRemove={onAttachmentRemove} />
                 </motion.div>
               ))}
             </AnimatePresence>

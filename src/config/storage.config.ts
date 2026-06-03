@@ -51,7 +51,7 @@ export const storageConfig: StorageConfig = {
     'image/gif',
     'application/pdf',
     'application/msword',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   ],
   staticAssetExtensions: [
     'svg',

@@ -57,7 +57,7 @@ export function useMessages(chatId: string, isCloseToBottom: boolean) {
       if (msg.is_optimistic) {
         const hasValidContent = msg.content && msg.content.trim().length > 0;
         const hasValidAttachments = msg.attachments && msg.attachments.length > 0;
-        if (!hasValidContent && !hasValidAttachments) return false;
+        if (!(hasValidContent || hasValidAttachments)) return false;
       }
 
       return true;
@@ -123,8 +123,7 @@ export function useMessages(chatId: string, isCloseToBottom: boolean) {
     if (validMessages.length === 0 || !user?.id) return;
 
     // If the chat isn't in an active reading state, clear pending timers
-    const chatIsActive =
-      isChatOpen && isWindowFocused && isDocumentVisible && isCloseToBottom;
+    const chatIsActive = isChatOpen && isWindowFocused && isDocumentVisible && isCloseToBottom;
     if (!chatIsActive) {
       readTimersRef.current.forEach((timer, messageId) => {
         clearTimeout(timer);
@@ -159,11 +158,7 @@ export function useMessages(chatId: string, isCloseToBottom: boolean) {
       startViewing(targetMessage.id);
 
       const timer = setTimeout(() => {
-        const stillEligible =
-          isCloseToBottom &&
-          isChatOpen &&
-          isWindowFocused &&
-          isDocumentVisible;
+        const stillEligible = isCloseToBottom && isChatOpen && isWindowFocused && isDocumentVisible;
 
         if (stillEligible && isViewedLongEnough(targetMessage.id, 500)) {
           markAsRead({ chatId, messageId: targetMessage.id });

@@ -20,8 +20,8 @@ export default function AuthCodeErrorPage() {
           <h1 className="text-2xl font-bold text-white">Помилка авторизації</h1>
 
           <p className="text-gray-400 leading-relaxed">
-            На жаль, сталася помилка під час входу через OAuth. Можливо, термін дії посилання
-            минув або виникли проблеми з сервером.
+            На жаль, сталася помилка під час входу через OAuth. Можливо, термін дії посилання минув
+            або виникли проблеми з сервером.
           </p>
 
           <div className="bg-red-500/5 border border-red-500/20 rounded-lg p-4 text-left">

@@ -31,7 +31,7 @@ function ChatListBase() {
 
   // Об'єднуємо всі сторінки в один масив
   const chats = useMemo(() => data?.pages.flat() || [], [data?.pages]);
-  const isBootstrapping = isAuthLoading || (!user && !data);
+  const isBootstrapping = isAuthLoading || !(user || data);
   const showInitialLoader = isBootstrapping || (isLoading && chats.length === 0);
 
   // Debug лог для Virtuoso
@@ -68,7 +68,7 @@ function ChatListBase() {
     const partner = chat.user_id === currentUserId ? chat.recipient : chat.user;
     const chatDisplayTitle = partner?.name || chat.title || 'Користувач Telegraf';
     const partnerImage = partner?.image;
-    
+
     // Перевіряємо, чи є цей чат активним
     const isActiveChat = pathname === `/chat/${chat.id}`;
 
@@ -124,9 +124,11 @@ function ChatListBase() {
 
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between gap-2">
-                <p className={`text-sm font-medium truncate transition-colors flex-1 min-w-0 ${
-                  isActiveChat ? 'text-white' : 'text-gray-200 group-hover:text-white'
-                }`}>
+                <p
+                  className={`text-sm font-medium truncate transition-colors flex-1 min-w-0 ${
+                    isActiveChat ? 'text-white' : 'text-gray-200 group-hover:text-white'
+                  }`}
+                >
                   {chatDisplayTitle}
                 </p>
 
@@ -138,9 +140,11 @@ function ChatListBase() {
               </div>
 
               <div className="flex items-center justify-between gap-2 mt-0.5">
-                <p className={`text-[11px] truncate flex-1 transition-colors ${
-                  isActiveChat ? 'text-gray-300' : 'text-gray-500'
-                }`}>
+                <p
+                  className={`text-[11px] truncate flex-1 transition-colors ${
+                    isActiveChat ? 'text-gray-300' : 'text-gray-500'
+                  }`}
+                >
                   {lastMessage?.sender_id === currentUserId && 'Ви: '}
                   {lastMessage?.content ||
                     (Array.isArray(lastMessage?.attachments) && lastMessage.attachments.length > 0
@@ -208,7 +212,7 @@ function ChatListBase() {
     );
   }
 
-  if (!chats.length && !isLoading && !isAuthLoading && user) {
+  if (!(chats.length || isLoading || isAuthLoading) && user) {
     return (
       <>
         <div className="p-8 text-center text-sm text-gray-500 mt-10">Немає діалогів</div>

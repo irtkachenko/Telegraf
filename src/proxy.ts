@@ -25,7 +25,7 @@ export default async function middleware(request: NextRequest) {
 
     const isPublicPage = path === '/' || path.startsWith('/auth');
 
-    if (!user && !isPublicPage) {
+    if (!(user || isPublicPage)) {
       url.pathname = '/';
       const redirectResponse = NextResponse.redirect(url);
 

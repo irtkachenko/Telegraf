@@ -18,7 +18,7 @@ interface StorageStore {
   mediaStates: Record<string, MediaState>;
   // Помилкові URL:Set оригінальних URL
   failedUrls: Set<string>;
-  
+
   // Дії
   setUrl: (key: string, data: CachedUrl) => void;
   setMediaState: (key: string, state: Partial<MediaState>) => void;
@@ -37,9 +37,9 @@ export const useStorageStore = create<StorageStore>((set) => ({
   mediaStates: {},
   failedUrls: new Set(),
 
-  setUrl: (key, data) => 
+  setUrl: (key, data) =>
     set((state) => ({
-      urlCache: { ...state.urlCache, [key]: data }
+      urlCache: { ...state.urlCache, [key]: data },
     })),
 
   setMediaState: (key, newState) =>
@@ -48,9 +48,9 @@ export const useStorageStore = create<StorageStore>((set) => ({
         ...state.mediaStates,
         [key]: {
           ...(state.mediaStates[key] || { isLoading: false, hasError: false, isLoaded: false }),
-          ...newState
-        }
-      }
+          ...newState,
+        },
+      },
     })),
 
   addFailedUrl: (url) =>

@@ -51,7 +51,7 @@ export function useChatEvents(chatId: string, user: User | null) {
   }, []);
 
   useEffect(() => {
-    if (!chatId || !user?.id) return;
+    if (!(chatId && user?.id)) return;
 
     // РЎС‚РІРѕСЂСЋС”РјРѕ РєР°РЅР°Р» РґР»СЏ РїСЂРёСЃСѓС‚РЅРѕСЃС‚С– РІ РєРѕРЅРєСЂРµС‚РЅРѕРјСѓ С‡Р°С‚С–
     const channel = realtimeApi.createChatChannel(chatId);
@@ -71,9 +71,9 @@ export function useChatEvents(chatId: string, user: User | null) {
         try {
           realtimeApi.unsubscribe(channel);
         } catch (error) {
-        if (process.env.NODE_ENV === 'development') {
-          console.warn('Error during chat events cleanup:', error);
-        }
+          if (process.env.NODE_ENV === 'development') {
+            console.warn('Error during chat events cleanup:', error);
+          }
         }
       }
       channelRef.current = null;
@@ -105,4 +105,3 @@ export function useChatEvents(chatId: string, user: User | null) {
 
   return { typingUsers, setTyping };
 }
-

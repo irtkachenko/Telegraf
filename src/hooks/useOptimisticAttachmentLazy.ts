@@ -99,7 +99,10 @@ export function useOptimisticAttachmentLazy() {
       const validation = validateFile(file);
       if (validation.valid) {
         validFiles.push(file);
-      } else if (validation.error?.includes('too large') || validation.error?.includes('Maximum size')) {
+      } else if (
+        validation.error?.includes('too large') ||
+        validation.error?.includes('Maximum size')
+      ) {
         rejectedBySize.push(file);
       } else {
         rejectedByType.push(file);
@@ -150,7 +153,9 @@ export function useOptimisticAttachmentLazy() {
     // Show toast for exceeding file count limit
     if (rejectedByCount.length > 0) {
       const rejectedNames = rejectedByCount.map((f) => f.name).join(', ');
-      toast.error(`Too many files. Maximum ${MAX_FILES_PER_MESSAGE} per message. Not added: ${rejectedNames}`);
+      toast.error(
+        `Too many files. Maximum ${MAX_FILES_PER_MESSAGE} per message. Not added: ${rejectedNames}`,
+      );
     }
 
     // Show toast for exceeding total size limit

@@ -4,11 +4,11 @@ import type {
   RealtimePostgresChangesPayload,
 } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase/client';
-import type { Chat, Message, User } from '@/types';
+import type { AppUser, ChatRow, Message } from '@/types';
 
-export type RealtimeChatPayload = RealtimePostgresChangesPayload<Chat>;
+export type RealtimeChatPayload = RealtimePostgresChangesPayload<ChatRow>;
 export type RealtimeMessagePayload = RealtimePostgresChangesPayload<Message>;
-export type RealtimeUserPayload = RealtimePostgresChangesPayload<User>;
+export type RealtimeUserPayload = RealtimePostgresChangesPayload<AppUser>;
 
 export const realtimeApi = {
   /**

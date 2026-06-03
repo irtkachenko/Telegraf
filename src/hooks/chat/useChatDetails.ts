@@ -4,11 +4,8 @@ import { useQuery } from '@tanstack/react-query';
 import { useSupabaseAuth } from '@/components/auth/AuthProvider';
 import { supabase } from '@/lib/supabase/client';
 import { AuthError, NetworkError } from '@/shared/lib/errors';
-import type { FullChat, User } from '@/types';
+import type { AppUser, FullChat } from '@/types';
 
-/**
- * Hook for fetching detailed information about a specific chat.
- */
 export function useChatDetails(chatId: string) {
   const { user } = useSupabaseAuth();
 
@@ -32,10 +29,9 @@ export function useChatDetails(chatId: string) {
 
       const normalizedData = data as FullChat;
 
-      // Нормалізуємо учасників для зручності UI
       const participants = [normalizedData.user, normalizedData.recipient].filter(
         Boolean,
-      ) as User[];
+      ) as AppUser[];
 
       return { ...normalizedData, participants } as FullChat;
     },

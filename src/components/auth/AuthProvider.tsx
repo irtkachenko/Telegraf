@@ -32,9 +32,6 @@ const AuthContext = createContext<AuthContextType>({
 
 export const useSupabaseAuth = () => useContext(AuthContext);
 
-/**
- * Fetch user profile from public.users table and merge with auth metadata.
- */
 async function fetchDbProfile(
   supabase: ReturnType<typeof createClient>,
   supabaseUser: SupabaseUser,
@@ -47,7 +44,6 @@ async function fetchDbProfile(
       .maybeSingle();
 
     if (error) {
-      // Expected if user row doesn't exist yet (new user, or trigger hasn't fired)
       if (process.env.NODE_ENV === 'development') {
         console.warn('Failed to fetch DB profile:', error.message);
       }
@@ -74,7 +70,6 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   const [loading, setLoading] = useState(true);
   const [supabase] = useState(() => createClient());
 
-  // Функція для нормалізації користувача з БД даними
   const normalizeUser = useCallback(
     async (supabaseUser: SupabaseUser | null) => {
       if (!supabaseUser) {
@@ -82,7 +77,6 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
         return;
       }
 
-      // Fetch DB profile to merge with auth metadata
       const dbProfile = await fetchDbProfile(supabase, supabaseUser);
       const normalizedUser = UserUtils.normalize(supabaseUser, dbProfile);
       setUser(normalizedUser);
@@ -90,7 +84,6 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     [supabase],
   );
 
-  // Функція для оновлення даних користувача
   const refreshUser = useCallback(async () => {
     const {
       data: { user },
@@ -102,7 +95,6 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     }
   }, [supabase, normalizeUser]);
 
-  // Обробник зміни стану автентифікації
   const handleAuthStateChange = useCallback(
     async (event: AuthChangeEvent, session: Session | null) => {
       if (event === 'INITIAL_SESSION') {
@@ -121,7 +113,6 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     [normalizeUser],
   );
 
-  // Ініціалізація
   useEffect(() => {
     let mounted = true;
 
@@ -136,7 +127,6 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
 
         if (error) {
           if (error.status === 400 || error.status === 401) {
-            // Expected unauthenticated state; don't show noisy toast.
             setLoading(false);
             return;
           }
@@ -163,7 +153,6 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
 
     initializeAuth();
 
-    // Listen for auth changes
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(handleAuthStateChange);
@@ -174,7 +163,6 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     };
   }, [supabase, handleAuthStateChange]);
 
-  // Realtime для presence
   useGlobalRealtime(supabaseUser);
 
   const value = useMemo(
