@@ -35,18 +35,7 @@ function ChatListBase() {
   const showInitialLoader = isBootstrapping || (isLoading && chats.length === 0);
 
   // Debug лог для Virtuoso
-  const validChats = useMemo(() => {
-    const filtered = chats.filter((chat) => chat?.id);
-    const duplicateCheck = new Set(filtered.map((c) => c.id)).size !== filtered.length;
-
-    if (duplicateCheck) {
-      if (process.env.NODE_ENV === 'development') {
-        console.error('❌ DUPLICATE CHAT IDS DETECTED!');
-      }
-    }
-
-    return filtered;
-  }, [chats]);
+  const validChats = useMemo(() => chats.filter((chat) => chat?.id), [chats]);
 
   const handleChatClick = () => {
     window.dispatchEvent(new CustomEvent('close-mobile-sidebar'));
@@ -197,35 +186,11 @@ function ChatListBase() {
   };
 
   if (showInitialLoader) {
-    return (
-      <>
-        <div className="p-8 text-center text-sm text-gray-500 mt-10">Завантаження...</div>
-        <ConfirmationDialog
-          open={!!chatToDelete}
-          onOpenChange={(open) => !open && setChatToDelete(null)}
-          title="Delete Chat"
-          description="Are you sure? This action cannot be undone."
-          onConfirm={handleConfirmDelete}
-          isLoading={deleteChat.isPending}
-        />
-      </>
-    );
+    return <div className="p-8 text-center text-sm text-gray-500 mt-10">Завантаження...</div>;
   }
 
   if (!(chats.length || isLoading || isAuthLoading) && user) {
-    return (
-      <>
-        <div className="p-8 text-center text-sm text-gray-500 mt-10">Немає діалогів</div>
-        <ConfirmationDialog
-          open={!!chatToDelete}
-          onOpenChange={(open) => !open && setChatToDelete(null)}
-          title="Delete Chat"
-          description="Are you sure? This action cannot be undone."
-          onConfirm={handleConfirmDelete}
-          isLoading={deleteChat.isPending}
-        />
-      </>
-    );
+    return <div className="p-8 text-center text-sm text-gray-500 mt-10">Немає діалогів</div>;
   }
 
   return (

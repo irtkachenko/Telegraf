@@ -1,13 +1,12 @@
 'use client';
 
 import { type InfiniteData, useMutation, useQueryClient } from '@tanstack/react-query';
-import imageCompression from 'browser-image-compression';
 import { useRef } from 'react';
 import { toast } from 'sonner';
 import { useSupabaseAuth } from '@/components/auth/AuthProvider';
 import { useStorageLimits } from '@/hooks/useDynamicStorageConfig';
 import { extractStorageRef, type StorageRef } from '@/lib/storage-utils';
-import { messagesApi, storageApi } from '@/services';
+import { messagesApi, storageApi, uploadFileOptimized } from '@/services';
 import { handleError } from '@/shared/lib/error-handler';
 import { AuthError, NetworkError, ValidationError } from '@/shared/lib/errors';
 import type { Attachment, Message } from '@/types';
@@ -27,6 +26,37 @@ interface SendMessageWithFilesParams {
   client_id?: string;
 }
 
+function getFileType(mimeType: string): 'image' | 'video' | 'file' {
+  if (mimeType.startsWith('image/')) return 'image';
+  if (mimeType.startsWith('video/')) return 'video';
+  return 'file';
+}
+
+function buildReplyDetails(
+  parentMessage: Message | null | undefined,
+  reply_to_id: string | undefined,
+): Message['reply_details'] {
+  if (parentMessage) {
+    return {
+      id: parentMessage.id,
+      sender: parentMessage.sender || { name: parentMessage.user?.name },
+      content: parentMessage.content,
+      sender_id: parentMessage.sender_id ?? undefined,
+      attachments: parentMessage.attachments ?? undefined,
+    };
+  }
+  if (reply_to_id) {
+    return {
+      id: reply_to_id,
+      sender: { name: null },
+      content: 'Завантаження...',
+      sender_id: null,
+      attachments: null,
+    };
+  }
+  return null;
+}
+
 /**
  * Хук для паралельної відправки повідомлень з файлами
  */
@@ -38,7 +68,6 @@ export function useSendMessageWithFiles(chatId: string) {
   // Простий кеш для запитів повідомлень, щоб уникнути дублікатів
   const messageFetchCache = useRef<Map<string, Promise<Message>>>(new Map());
 
-  // Функція для отримання повідомлення з кешуванням
   const getMessageWithCache = async (messageId: string): Promise<Message | null> => {
     const cached = messageFetchCache.current.get(messageId);
     if (cached) {
@@ -54,7 +83,6 @@ export function useSendMessageWithFiles(chatId: string) {
 
     try {
       const message = await promise;
-      // Очищуємо кеш через 5 секунд
       setTimeout(() => {
         messageFetchCache.current.delete(messageId);
       }, 5000);
@@ -69,7 +97,6 @@ export function useSendMessageWithFiles(chatId: string) {
     mutationFn: async ({ content, files, reply_to_id, client_id }: SendMessageWithFilesParams) => {
       if (!user) throw new AuthError('Ви не авторизовані', 'SEND_MESSAGE_AUTH_REQUIRED', 401);
 
-      // Перевірка чи є що відправляти
       if (!content.trim() && files.length === 0) {
         throw new ValidationError(
           'Повідомлення не може бути порожнім',
@@ -80,9 +107,6 @@ export function useSendMessageWithFiles(chatId: string) {
       }
 
       // Валідація файлів
-      const validatedFiles: File[] = [];
-      const pendingAttachments: PendingAttachment[] = [];
-
       for (const file of files) {
         const validation = validateFile(file);
         if (!validation.valid) {
@@ -93,55 +117,22 @@ export function useSendMessageWithFiles(chatId: string) {
             400,
           );
         }
-        validatedFiles.push(file);
-
-        // Створюємо pending attachment для оптимістичного UI
-        const id = crypto.randomUUID();
-        const previewUrl = URL.createObjectURL(file);
-
-        // Визначаємо тип файлу на основі MIME типу
-        let type: 'image' | 'video' | 'file';
-        if (file.type.startsWith('image/')) {
-          type = 'image';
-        } else if (file.type.startsWith('video/')) {
-          type = 'video';
-        } else {
-          type = 'file';
-        }
-
-        pendingAttachments.push({
-          id,
-          file,
-          previewUrl,
-          type,
-          metadata: { name: file.name, size: file.size },
-        });
       }
 
-      // Паралельне завантаження файлів спочатку
-      const uploadOperations = validatedFiles.map((file) =>
-        uploadFileOptimized(file, chatId, user.id),
+      // Паралельне завантаження файлів
+      const uploadResults = await Promise.allSettled(
+        files.map((file) => uploadFileOptimized(file, chatId, user.id)),
       );
-      const uploadResults = await Promise.allSettled(uploadOperations);
 
-      // Обробка результатів завантаження файлів
+      // Обробка результатів завантаження
       const successfulUploads: Attachment[] = [];
       const failedUploads: { file: File; error: Error }[] = [];
 
       uploadResults.forEach((result, index) => {
-        if (result.status === 'fulfilled') {
-          // Переконуємось що результат є типом Attachment
-          const uploadResult = result.value;
-          if (
-            uploadResult &&
-            typeof uploadResult === 'object' &&
-            'id' in uploadResult &&
-            'url' in uploadResult
-          ) {
-            successfulUploads.push(uploadResult as Attachment);
-          }
-        } else {
-          failedUploads.push({ file: validatedFiles[index], error: result.reason });
+        if (result.status === 'fulfilled' && isAttachment(result.value)) {
+          successfulUploads.push(result.value);
+        } else if (result.status === 'rejected') {
+          failedUploads.push({ file: files[index], error: result.reason });
         }
       });
 
@@ -157,7 +148,7 @@ export function useSendMessageWithFiles(chatId: string) {
         content: content.trim(),
         reply_to_id: reply_to_id || undefined,
         attachments: successfulUploads,
-        client_id: clientId, // Тільки реальні завантажені файли
+        client_id: clientId,
       };
 
       let savedMessage: Message;
@@ -165,29 +156,11 @@ export function useSendMessageWithFiles(chatId: string) {
         savedMessage = await messagesApi.sendMessage(chatId, messagePayload);
       } catch (error) {
         // Best-effort cleanup for already uploaded files
-        const refs = successfulUploads
-          .map((a) => extractStorageRef(a.url))
-          .filter((r): r is StorageRef => !!r);
-        const bucketToPaths = new Map<string, string[]>();
-        refs.forEach((r) => {
-          const list = bucketToPaths.get(r.bucket) || [];
-          list.push(r.path);
-          bucketToPaths.set(r.bucket, list);
-        });
-        await Promise.allSettled(
-          Array.from(bucketToPaths.entries()).map(([bucket, paths]) =>
-            storageApi.deleteFiles(bucket, paths),
-          ),
-        );
+        await cleanupFailedUploads(successfulUploads);
         throw error;
       }
 
-      // Очищення preview URLs
-      pendingAttachments.forEach(({ previewUrl }) => {
-        URL.revokeObjectURL(previewUrl);
-      });
-
-      // Повідомляємо про помилки завантаження файлів
+      // Очищення preview URLs (вони створюються в onMutate)
       if (failedUploads.length > 0) {
         const errorMessages = failedUploads
           .map(({ file, error }) => {
@@ -208,13 +181,6 @@ export function useSendMessageWithFiles(chatId: string) {
         toast.error(`Помилка завантаження файлів: ${errorMessages}`);
       }
 
-      // Оновлюємо повідомлення з успішно завантаженими файлами
-      if (successfulUploads.length > 0) {
-        // Оновлюємо повідомлення в базі даних з реальними attachments
-        // Це може бути зроблено через окремий API виклик або повернення оновленого повідомлення
-      }
-
-      // Повертаємо повідомлення з реальними attachments
       return {
         message: savedMessage,
         uploadedFiles: successfulUploads,
@@ -227,62 +193,29 @@ export function useSendMessageWithFiles(chatId: string) {
       await queryClient.cancelQueries({ queryKey: ['messages', chatId] });
       const previousData = queryClient.getQueryData(['messages', chatId]);
 
-      // Знаходимо батьківське повідомлення для реплаю в кеші
+      // Знаходимо батьківське повідомлення для реплаю
       const allMessages = (previousData as InfiniteData<Message[]>)?.pages?.flat() || [];
       let parentMessage = reply_to_id ? allMessages.find((m) => m.id === reply_to_id) : null;
 
-      // Якщо повідомлення не знайдено в кеші, робимо запит до API
       if (reply_to_id && !parentMessage) {
         try {
           parentMessage = await getMessageWithCache(reply_to_id);
-        } catch (error) {
-          console.warn('Failed to fetch reply message:', error);
-          // Продовжуємо без даних реплаю, покажемо placeholder
+        } catch {
+          // Продовжуємо без даних реплаю
         }
       }
 
-      // Створюємо reply_details з доступною інформацією
-      const replyDetails = parentMessage
-        ? {
-            id: parentMessage.id,
-            sender: parentMessage.sender || { name: parentMessage.user?.name },
-            content: parentMessage.content,
-            sender_id: parentMessage.sender_id,
-            attachments: parentMessage.attachments,
-          }
-        : reply_to_id
-          ? {
-              id: reply_to_id,
-              sender: { name: null },
-              content: 'Завантаження...',
-              sender_id: null,
-              attachments: null,
-            }
-          : null;
+      const replyDetails = buildReplyDetails(parentMessage, reply_to_id);
 
       // Створюємо оптимістичні attachments
-      const optimisticAttachments: Attachment[] = files.map((file) => {
-        const id = crypto.randomUUID();
-        const previewUrl = URL.createObjectURL(file);
+      const optimisticAttachments: Attachment[] = files.map((file) => ({
+        id: crypto.randomUUID(),
+        type: getFileType(file.type),
+        url: URL.createObjectURL(file),
+        metadata: { name: file.name, size: file.size },
+        uploading: true,
+      })) as Attachment[];
 
-        // Визначаємо тип файлу на основі MIME типу
-        let type: 'image' | 'video' | 'file';
-        if (file.type.startsWith('image/')) {
-          type = 'image';
-        } else if (file.type.startsWith('video/')) {
-          type = 'video';
-        } else {
-          type = 'file';
-        }
-
-        return {
-          id,
-          type,
-          url: previewUrl,
-          metadata: { name: file.name, size: file.size },
-          uploading: true,
-        } as Attachment;
-      });
       const clientId = client_id ?? crypto.randomUUID();
       const optimisticMessage: Message = {
         id: `temp-${Date.now()}`,
@@ -315,14 +248,12 @@ export function useSendMessageWithFiles(chatId: string) {
         'SendMessageWithFiles',
       );
 
-      // Очищення preview URLs при помилці
       context?.optimisticAttachments?.forEach((attachment: Attachment) => {
         if (attachment.url?.startsWith('blob:')) {
           URL.revokeObjectURL(attachment.url);
         }
       });
 
-      // Rollback оптимістичних змін
       queryClient.setQueryData(['messages', chatId], context?.previousData);
     },
 
@@ -341,13 +272,10 @@ export function useSendMessageWithFiles(chatId: string) {
                 (msg.client_id && msg.client_id === message.client_id);
 
               if (matches) {
-                // ВАЖЛИВО: Ми накладаємо серверні дані на існуючий об'єкт,
-                // зберігаючи client_id та дату. Це ПОВНІСТЮ прибирає мерехтіння.
                 return {
-                  ...msg, // Початкові дані (з client_id та точною датою)
-                  ...message, // Дані з сервера (ID, контент)
-                  client_id: msg.client_id || clientId, // Запасний варіант
-
+                  ...msg,
+                  ...message,
+                  client_id: msg.client_id || clientId,
                   is_optimistic: false,
                 };
               }
@@ -357,14 +285,12 @@ export function useSendMessageWithFiles(chatId: string) {
         };
       });
 
-      // Очищення preview URLs
       context?.optimisticAttachments?.forEach((attachment: Attachment) => {
         if (attachment.url?.startsWith('blob:')) {
           URL.revokeObjectURL(attachment.url);
         }
       });
 
-      // Показуємо toast про результат
       if (failedFiles.length === 0) {
         toast.success('Повідомлення відправлено');
       } else {
@@ -375,45 +301,30 @@ export function useSendMessageWithFiles(chatId: string) {
   });
 }
 
-/**
- * Оптимізоване завантаження файлу з компресією зображень
- */
-async function uploadFileOptimized(
-  file: File,
-  chatId: string,
-  userId: string,
-): Promise<Attachment> {
-  try {
-    let fileToUpload: File | Blob = file;
+function isAttachment(value: unknown): value is Attachment {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    'id' in value &&
+    'url' in value &&
+    'type' in value &&
+    'metadata' in value
+  );
+}
 
-    // Стиснення тільки для зображень
-    if (file.type.startsWith('image/') && file.size > 1024 * 1024) {
-      try {
-        fileToUpload = await imageCompression(file, {
-          maxSizeMB: 0.8,
-          maxWidthOrHeight: 1920,
-          useWebWorker: true,
-        });
-      } catch (e) {
-        if (process.env.NODE_ENV === 'development') {
-          console.warn('Стиснення не вдалося, вантажимо оригінал', e);
-        }
-      }
-    }
-
-    // Завантажуємо файл
-    const attachment = await storageApi.uploadAttachment(fileToUpload as File, chatId, userId);
-    return attachment;
-  } catch (error) {
-    // Зберігаємо оригінальний код помилки від Supabase
-    const statusCode =
-      error && typeof error === 'object' && 'status' in error ? (error.status as number) : 500;
-
-    throw new NetworkError(
-      `Помилка завантаження файлу ${file.name}: ${error instanceof Error ? error.message : 'Невідома помилка'}`,
-      'file-upload',
-      'ATTACHMENT_UPLOAD_ERROR',
-      statusCode,
-    );
-  }
+async function cleanupFailedUploads(attachments: Attachment[]) {
+  const refs = attachments
+    .map((a) => extractStorageRef(a.url))
+    .filter((r): r is StorageRef => !!r);
+  const bucketToPaths = new Map<string, string[]>();
+  refs.forEach((r) => {
+    const list = bucketToPaths.get(r.bucket) || [];
+    list.push(r.path);
+    bucketToPaths.set(r.bucket, list);
+  });
+  await Promise.allSettled(
+    Array.from(bucketToPaths.entries()).map(([bucket, paths]) =>
+      storageApi.deleteFiles(bucket, paths),
+    ),
+  );
 }
