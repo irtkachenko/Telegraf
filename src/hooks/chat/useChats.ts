@@ -1,6 +1,7 @@
 'use client';
 
 import { type InfiniteData, useInfiniteQuery } from '@tanstack/react-query';
+import { chatConfig } from '@/config/chat.config';
 import { useSupabaseAuth } from '@/components/auth/AuthProvider';
 import { chatsApi } from '@/services';
 import type { FullChat } from '@/types';
@@ -27,7 +28,7 @@ export function useChats() {
     initialPageParam: 1,
     getNextPageParam: (lastPage, allPages) => {
       // Якщо остання сторінка менша за ліміт, то це кінець
-      if (lastPage.length < 20) return undefined;
+      if (lastPage.length < chatConfig.pageSize) return undefined;
       // Інакше повертаємо номер наступної сторінки
       return allPages.length + 1;
     },

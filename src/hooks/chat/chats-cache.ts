@@ -1,14 +1,13 @@
 import type { InfiniteData } from '@tanstack/react-query';
+import { chatConfig } from '@/config/chat.config';
 import type { FullChat, Message } from '@/types';
 
-const DEFAULT_PAGE_SIZE = 20;
-
-function getChatSortDate(chat: FullChat): number {
+export function getChatSortDate(chat: FullChat): number {
   const date = chat.messages?.[0]?.created_at || chat.created_at;
   return new Date(date).getTime();
 }
 
-function rebuildPages(flat: FullChat[], pageSize: number): FullChat[][] {
+export function rebuildPages(flat: FullChat[], pageSize: number): FullChat[][] {
   const pages: FullChat[][] = [];
   for (let i = 0; i < flat.length; i += pageSize) {
     pages.push(flat.slice(i, i + pageSize));
@@ -48,7 +47,7 @@ export function upsertChatLastMessage(
   // Keep list order fresh by last message date (or chat created date)
   flat.sort((a, b) => getChatSortDate(b) - getChatSortDate(a));
 
-  const pageSize = data.pages[0]?.length || DEFAULT_PAGE_SIZE;
+  const pageSize = data.pages[0]?.length || chatConfig.pageSize;
   return { ...data, pages: rebuildPages(flat, pageSize) };
 }
 
@@ -94,7 +93,7 @@ export function upsertChat(
   }
 
   flat.sort((a, b) => getChatSortDate(b) - getChatSortDate(a));
-  const pageSize = data.pages[0]?.length || DEFAULT_PAGE_SIZE;
+  const pageSize = data.pages[0]?.length || chatConfig.pageSize;
   return { ...data, pages: rebuildPages(flat, pageSize) };
 }
 
@@ -105,6 +104,6 @@ export function removeChat(
   if (!data) return data;
 
   const flat = data.pages.flat().filter((chat) => chat.id !== chatId);
-  const pageSize = data.pages[0]?.length || DEFAULT_PAGE_SIZE;
+  const pageSize = data.pages[0]?.length || chatConfig.pageSize;
   return { ...data, pages: rebuildPages(flat, pageSize) };
 }
