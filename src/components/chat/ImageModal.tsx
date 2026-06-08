@@ -211,6 +211,7 @@ function ImageModalContent({ isOpen, images, initialIndex, onClose }: ImageModal
                     src={currentImage.url}
                     alt="Gallery"
                     fill
+                    sizes="100vw"
                     className="object-contain select-none"
                     priority
                     unoptimized

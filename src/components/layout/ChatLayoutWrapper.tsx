@@ -44,6 +44,14 @@ export default function ChatLayoutWrapper({ children, sidebar, user }: ChatLayou
 
   const toggleSidebar = () => setIsSidebarOpen((prev) => !prev);
 
+  // On the landing page (root path) when not logged in, render children directly
+  // since the landing page has its own built-in navbar
+  const isLandingPage = pathname === '/' && !user;
+
+  if (isLandingPage) {
+    return <>{children}</>;
+  }
+
   return (
     <div className="flex flex-col min-h-[100dvh]">
       <Navbar user={user} onMenuClick={toggleSidebar} />

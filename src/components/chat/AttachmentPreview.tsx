@@ -31,6 +31,7 @@ export default function AttachmentPreview({ attachment, onRemove }: AttachmentPr
           src={attachment.previewUrl}
           alt={attachment.metadata.name}
           fill
+          sizes="80px"
           className="w-full h-full object-cover transition-transform group-hover:scale-110"
           unoptimized
         />

@@ -55,6 +55,7 @@ export default function Navbar({ user, onMenuClick }: NavbarProps) {
                     src={user.image || '/default-avatar.png'}
                     alt="avatar"
                     fill
+                    sizes="36px"
                     className="object-cover"
                   />
                 </div>

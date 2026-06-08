@@ -40,7 +40,7 @@ function buildReplyDetails(
     return {
       id: parentMessage.id,
       sender: parentMessage.sender || { name: parentMessage.user?.name },
-      content: parentMessage.content,
+      content: parentMessage.content ?? '',
       sender_id: parentMessage.sender_id ?? undefined,
       attachments: parentMessage.attachments ?? undefined,
     };
@@ -50,8 +50,8 @@ function buildReplyDetails(
       id: reply_to_id,
       sender: { name: null },
       content: 'Завантаження...',
-      sender_id: null,
-      attachments: null,
+      sender_id: undefined,
+      attachments: undefined,
     };
   }
   return null;
@@ -291,11 +291,9 @@ export function useSendMessageWithFiles(chatId: string) {
         }
       });
 
-      if (failedFiles.length === 0) {
-        toast.success('Повідомлення відправлено');
-      } else {
+      if (failedFiles.length > 0) {
         const failedFileNames = failedFiles.map((f) => f.file.name).join(', ');
-        toast.warning(`Повідомлення відправлено, але файли не завантажено: ${failedFileNames}`);
+        toast.error(`Помилка завантаження файлів: ${failedFileNames}`);
       }
     },
   });

@@ -264,7 +264,7 @@ export function handleMessageDelete(
   if (!deletedId) return;
 
   const deletedChatId =
-    (payload.old.chat_id as string | undefined) || findChatIdByMessageId(queryClient, deletedId);
+    ((payload.old as Record<string, unknown>).chat_id as string | undefined) || findChatIdByMessageId(queryClient, deletedId);
 
   if (deletedChatId) {
     queryClient.setQueryData(['chats'], (old: InfiniteData<FullChat[]> | undefined) =>
