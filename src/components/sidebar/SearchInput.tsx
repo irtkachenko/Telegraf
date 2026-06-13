@@ -28,17 +28,22 @@ function SearchInputBase() {
   }, [query, router, searchParams]);
 
   return (
-    <div className="relative group px-4">
-      <div className="absolute left-7 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-white transition-colors duration-300">
-        <Search className="w-4 h-4" />
+    <div className="relative group px-4.5 mb-2">
+      <div className="absolute left-7.5 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-[#8d96e9] transition-colors duration-200">
+        <Search className="w-3.5 h-3.5" />
       </div>
       <input
         type="text"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        placeholder="Пошук за email адресою..."
-        className="w-full bg-white/5 border border-white/5 rounded-xl py-2 pl-10 pr-4 text-sm focus:outline-none focus:ring-1 focus:ring-white/20 transition-all duration-300 placeholder:text-gray-500"
+        placeholder="Пошук за email..."
+        className="w-full bg-white/[0.02] border border-white/[0.06] rounded-md py-1.5 pl-8.5 pr-8 text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#5e6ad2]/50 focus:border-[#5e6ad2]/30 transition-all duration-200 placeholder:text-gray-500"
       />
+      <div className="absolute right-7.5 top-1/2 -translate-y-1/2 flex items-center pointer-events-none">
+        <span className="text-[9px] text-gray-500 bg-white/5 border border-white/5 px-1 py-0.5 rounded">
+          ⌘K
+        </span>
+      </div>
     </div>
   );
 }

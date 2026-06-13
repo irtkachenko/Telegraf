@@ -28,7 +28,7 @@ export default function ComposerAddons({
 
   return (
     <div
-      className="px-4 py-3 border-t border-white/5 backdrop-blur-md bg-white/5 space-y-2 overflow-hidden"
+      className="px-4 py-2 bg-white/[0.01] border-b border-white/[0.04] space-y-2 overflow-hidden"
       style={{ willChange: 'transform' }}
     >
       <AnimatePresence mode="popLayout">
@@ -40,18 +40,18 @@ export default function ComposerAddons({
             animate={{ height: 'auto', opacity: 1, y: 0 }}
             exit={{ height: 0, opacity: 0, y: 10 }}
             transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-            className="flex items-center gap-3 py-2 border-s-4 border-amber-500 px-3 bg-amber-500/5 rounded-e-lg relative group overflow-hidden"
+            className="flex items-center gap-3 py-1.5 border-l-2 border-yellow-500/60 px-3 bg-yellow-500/5 rounded-r-md relative group overflow-hidden"
           >
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold text-amber-400">Editing message</p>
-              <p className="text-sm text-gray-300 truncate">{editingMessage.content}</p>
+              <p className="text-[10px] font-bold text-yellow-500 uppercase tracking-wider">Редагування</p>
+              <p className="text-xs text-gray-300 truncate mt-0.5">{editingMessage.content}</p>
             </div>
             <button
               type="button"
               onClick={onEditCancel}
-              className="p-1 hover:bg-white/10 rounded-full text-gray-400 transition-colors duration-300"
+              className="p-1 hover:bg-white/5 rounded-md text-gray-400 hover:text-white transition-colors cursor-pointer"
             >
-              <X size={16} />
+              <X size={14} />
             </button>
           </motion.div>
         )}
@@ -64,22 +64,22 @@ export default function ComposerAddons({
             animate={{ height: 'auto', opacity: 1, y: 0 }}
             exit={{ height: 0, opacity: 0, y: 10 }}
             transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-            className="flex items-center gap-3 py-2 border-s-4 border-blue-500 px-3 bg-blue-500/5 rounded-e-lg relative group overflow-hidden"
+            className="flex items-center gap-3 py-1.5 border-l-2 border-[#5e6ad2] px-3 bg-[#5e6ad2]/5 rounded-r-md relative group overflow-hidden"
           >
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold text-blue-400">
+              <p className="text-[10px] font-bold text-[#8d96e9] uppercase tracking-wider">
                 {currentUserId && replyTo.sender_id === currentUserId
-                  ? 'Reply to yourself'
-                  : `Reply to ${otherParticipantName || 'user'}`}
+                  ? 'Відповідь собі'
+                  : `Відповідь ${otherParticipantName || 'користувачу'}`}
               </p>
-              <p className="text-sm text-gray-300 truncate">{replyTo.content}</p>
+              <p className="text-xs text-gray-300 truncate mt-0.5">{replyTo.content}</p>
             </div>
             <button
               type="button"
               onClick={onReplyCancel}
-              className="p-1 hover:bg-white/10 rounded-full text-gray-400 transition-colors duration-300"
+              className="p-1 hover:bg-white/5 rounded-md text-gray-400 hover:text-white transition-colors cursor-pointer"
             >
-              <X size={16} />
+              <X size={14} />
             </button>
           </motion.div>
         )}
@@ -91,7 +91,7 @@ export default function ComposerAddons({
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide"
+            className="flex gap-2 overflow-x-auto pb-1.5 scrollbar-hide pt-1"
           >
             <AnimatePresence>
               {attachments.map((attachment) => (

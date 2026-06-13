@@ -21,58 +21,57 @@ interface NavbarProps {
 
 export default function Navbar({ user, onMenuClick }: NavbarProps) {
   return (
-    <nav className="fixed top-0 left-0 right-0 z-[800] flex items-center justify-between px-4 sm:px-6 py-4 border-b border-white/10 bg-black/50 backdrop-blur-lg">
+    <nav className="fixed top-0 left-0 right-0 z-[800] flex items-center justify-between px-4 sm:px-6 h-14 border-b border-white/[0.05] bg-[#08080a]/70 backdrop-blur-md">
       {/* Left: Menu & Logo */}
-      <div className="flex items-center gap-2 sm:gap-4">
+      <div className="flex items-center gap-2">
         {user && (
           <button
             type="button"
             onClick={onMenuClick}
-            className="p-2 -ml-2 hover:bg-white/10 rounded-lg text-gray-400 hover:text-white transition-colors lg:hidden"
+            className="p-1.5 -ml-1.5 hover:bg-white/5 border border-transparent hover:border-white/5 rounded-md text-gray-400 hover:text-white transition-all lg:hidden cursor-pointer"
             aria-label="Toggle Menu"
           >
-            <Menu className="w-5 h-5" />
+            <Menu className="w-4 h-4" />
           </button>
         )}
         <Logo />
       </div>
 
       {/* Right: Connection Status & Auth */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3">
         {user && <ConnectionIndicator showText />}
         {user ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                className="flex items-center gap-3 hover:opacity-80 transition-opacity focus:outline-none group"
+                className="flex items-center gap-2.5 hover:opacity-95 focus:outline-none group cursor-pointer"
               >
-                <span className="hidden sm:block text-sm font-medium text-gray-200 group-hover:text-white transition-colors">
+                <span className="hidden sm:block text-xs font-semibold text-gray-300 group-hover:text-white transition-colors">
                   {user.name}
                 </span>
-                <div className="relative w-9 h-9 rounded-full overflow-hidden border border-white/20 group-hover:border-white/40 transition-all">
+                <div className="relative w-7 h-7 rounded-full overflow-hidden border border-white/10 group-hover:border-white/20 transition-all">
                   <Image
                     src={user.image || '/default-avatar.png'}
                     alt="avatar"
                     fill
-                    sizes="36px"
+                    sizes="28px"
                     className="object-cover"
                   />
                 </div>
               </button>
             </DropdownMenuTrigger>
 
-            <DropdownMenuContent align="end" className="w-56">
-              <div className="px-3 py-2.5">
-                <p className="text-[10px] uppercase tracking-wider text-gray-500 font-bold">
-                  Активний аккаунт
+            <DropdownMenuContent align="end" className="w-56 bg-[#121216] border border-white/[0.08] text-white rounded-lg p-1">
+              <div className="px-2.5 py-2">
+                <p className="text-[9px] uppercase tracking-wider text-gray-500 font-bold">
+                  Активний акаунт
                 </p>
-                <p className="text-sm font-medium text-white truncate mt-0.5">{user.email}</p>
+                <p className="text-xs font-medium text-gray-200 truncate mt-0.5">{user.email}</p>
               </div>
 
-              <DropdownMenuSeparator />
+              <DropdownMenuSeparator className="bg-white/[0.05]" />
 
-              {/* Тут ми використовуємо твій SignOutButton, але стилізуємо його під пункт меню */}
               <div className="p-0">
                 <SignOutButton />
               </div>

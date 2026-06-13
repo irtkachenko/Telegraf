@@ -252,37 +252,37 @@ export default function ChatPage() {
   const isTypingNow = otherParticipant && typingUsers.has(otherParticipant.id);
 
   return (
-    <div className="flex flex-col h-[calc(100dvh-64px)] w-full bg-background relative overflow-hidden">
+    <div className="flex flex-col h-[calc(100dvh-56px)] w-full bg-[#08080a] relative overflow-hidden">
       {isLoaderVisible && (
-        <div className="absolute inset-0 z-30 flex items-center justify-center text-gray-400 bg-background backdrop-blur-md">
-          <div className="flex flex-col items-center gap-2">
-            <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-            <p className="text-sm font-medium animate-pulse">Завантаження чату...</p>
+        <div className="absolute inset-0 z-30 flex items-center justify-center text-gray-400 bg-[#08080a] backdrop-blur-md">
+          <div className="flex flex-col items-center gap-2.5">
+            <div className="w-6 h-6 border-2 border-[#5e6ad2] border-t-transparent rounded-full animate-spin" />
+            <p className="text-xs font-semibold text-gray-400 animate-pulse">Завантаження чату...</p>
           </div>
         </div>
       )}
       {/* Header */}
       <div
-        className="px-3 sm:px-6 py-3 sm:py-4 border-b border-white/5 flex items-center justify-between backdrop-blur-xl bg-black/40 sticky top-0 z-20"
+        className="px-4.5 py-2.5 border-b border-white/[0.05] flex items-center justify-between backdrop-blur-md bg-[#0c0d0f]/50 sticky top-0 z-20"
         style={{ opacity: isLoaderVisible ? 0 : 1 }}
       >
-        <div className="flex items-center gap-3 sm:gap-4">
-          <div className="relative w-10 h-10 sm:w-11 sm:h-11 rounded-full overflow-hidden border border-white/10 shadow-lg">
+        <div className="flex items-center gap-3">
+          <div className="relative w-8 h-8 rounded-full overflow-hidden border border-white/10 shadow">
             <Image
               src={otherParticipant?.image || '/default-avatar.png'}
               alt={otherParticipant?.name || 'User'}
               fill
               className="object-cover"
-              sizes="(max-width: 640px) 40px, 44px"
+              sizes="32px"
             />
           </div>
           <div className="min-w-0">
-            <h2 className="text-sm sm:text-base font-bold text-white tracking-tight truncate leading-tight">
+            <h2 className="text-xs font-bold text-white tracking-tight truncate leading-tight">
               {otherParticipant?.name || 'Невідомий користувач'}
             </h2>
-            <div className="text-[10px] sm:text-[11px] font-medium transition-colors">
+            <div className="text-[9px] font-semibold transition-colors mt-0.5">
               {isTypingNow ? (
-                <span className="text-blue-400 animate-pulse">друкує...</span>
+                <span className="text-[#8d96e9] animate-pulse">друкує...</span>
               ) : isOnline ? (
                 <span className="text-green-400">в мережі</span>
               ) : (
@@ -301,11 +301,11 @@ export default function ChatPage() {
       <div className="flex-1 relative min-h-0" style={{ opacity: isLoaderVisible ? 0 : 1 }}>
         {messages.length === 0 && !isMessagesLoading ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-4">
-            <div className="w-20 h-20 bg-white/5 rounded-3xl flex items-center justify-center mb-4 border border-white/10 shadow-2xl">
-              <span className="text-3xl">💬</span>
+            <div className="w-16 h-16 bg-white/[0.03] rounded-2xl flex items-center justify-center mb-3 border border-white/[0.05] shadow-xl">
+              <span className="text-2xl">💬</span>
             </div>
-            <h3 className="text-white font-semibold text-lg mb-1">Поки що порожньо</h3>
-            <p className="text-gray-500 text-sm max-w-[280px]">
+            <h3 className="text-white font-bold text-sm mb-1">Поки що порожньо</h3>
+            <p className="text-gray-500 text-xs max-w-[240px]">
               Напишіть щось, щоб розпочати бесіду!
             </p>
           </div>
@@ -409,17 +409,17 @@ export default function ChatPage() {
               onClick={() => {
                 scrollToBottom('smooth', 1600);
               }}
-              className="absolute bottom-6 right-6 p-3 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 backdrop-blur-2xl text-white shadow-2xl z-10"
+              className="absolute bottom-5 right-5 p-2 rounded-md bg-[#121216] hover:bg-white/[0.08] border border-white/10 text-gray-400 hover:text-white shadow-xl z-10 transition-all cursor-pointer"
             >
-              <ChevronDown className="w-5 h-5" />
+              <ChevronDown className="w-4 h-4" />
             </motion.button>
           )}
         </AnimatePresence>
       </div>
 
       {/* Input Section */}
-      <div className="w-full border-t border-white/5 bg-black/40 backdrop-blur-2xl z-20">
-        <div className="max-w-5xl mx-auto px-1.5 sm:px-4 py-2 sm:py-4">
+      <div className="w-full border-t border-white/[0.05] bg-[#0c0d0f]/50 backdrop-blur-md z-20">
+        <div className="max-w-5xl mx-auto px-2 sm:px-6 py-2 sm:py-3.5">
           <ChatInput
             chatId={id}
             setTyping={setTyping}
@@ -433,7 +433,7 @@ export default function ChatPage() {
             }}
           />
         </div>
-        <div className="h-[env(safe-area-inset-bottom,16px)]" />
+        <div className="h-[env(safe-area-inset-bottom,12px)]" />
       </div>
 
       <ConfirmationDialog

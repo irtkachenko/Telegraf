@@ -33,37 +33,37 @@ function SidebarShellBase() {
 
   return (
     <aside
-      className="h-screen lg:h-[calc(100vh-64px)] w-80 backdrop-blur-md bg-black/40 border-r border-white/10 flex flex-col z-40 shrink-0 overflow-hidden"
+      className="h-screen lg:h-[calc(100vh-56px)] w-80 bg-[#0c0d0f] border-r border-white/[0.05] flex flex-col z-40 shrink-0 overflow-hidden"
       style={{ willChange: 'transform' }}
     >
-      {/* Header */}
-      <div className="pt-6 pb-2 lg:pt-8 lg:pb-4">
-        {/* View Toggle */}
-        <div className="px-4 mb-6">
-          <div className="flex p-1 bg-white/5 rounded-xl border border-white/10">
+      {/* Header section with cleaner spacing */}
+      <div className="pt-4 pb-2">
+        {/* Sleek Segmented Switcher */}
+        <div className="px-4.5 mb-4">
+          <div className="flex p-0.5 bg-white/[0.02] rounded-lg border border-white/[0.05]">
             <button
               type="button"
               onClick={() => setTab('chats')}
-              className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all duration-300 ${
+              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-semibold transition-all duration-200 cursor-pointer ${
                 tab === 'chats'
-                  ? 'bg-white text-black shadow-lg shadow-white/5'
-                  : 'text-gray-400 hover:text-white'
+                  ? 'bg-white/[0.06] text-white shadow-sm border border-white/[0.05]'
+                  : 'text-gray-400 hover:text-gray-200 border border-transparent'
               }`}
             >
-              <MessageSquare className="w-3.5 h-3.5" />
-              Діалоги
+              <MessageSquare className="w-3.5 h-3.5 text-[#8d96e9]" />
+              <span>Діалоги</span>
             </button>
             <button
               type="button"
               onClick={() => setTab('contacts')}
-              className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all duration-300 ${
+              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-semibold transition-all duration-200 cursor-pointer ${
                 tab === 'contacts'
-                  ? 'bg-white text-black shadow-lg shadow-white/5'
-                  : 'text-gray-400 hover:text-white'
+                  ? 'bg-white/[0.06] text-white shadow-sm border border-white/[0.05]'
+                  : 'text-gray-400 hover:text-gray-200 border border-transparent'
               }`}
             >
-              <Users className="w-3.5 h-3.5" />
-              Контакти
+              <Users className="w-3.5 h-3.5 text-[#8d96e9]" />
+              <span>Контакти</span>
             </button>
           </div>
         </div>
@@ -72,15 +72,15 @@ function SidebarShellBase() {
         {tab === 'contacts' && <SearchInput />}
 
         {/* Chats Specific UI */}
-        {tab === 'chats' && <div className="h-4" />}
+        {tab === 'chats' && <div className="h-0" />}
       </div>
 
       {/* Lists */}
-      <div className="flex-1 flex flex-col min-h-0 py-2 overflow-hidden">
+      <div className="flex-1 flex flex-col min-h-0 py-1 overflow-hidden">
         {tab === 'chats' ? (
           <>
-            <div className="mb-2">
-              <h2 className="text-[10px] font-bold uppercase tracking-widest text-gray-500 letter-spacing-wide px-4">
+            <div className="mb-2.5 px-4.5">
+              <h2 className="text-[10px] font-bold uppercase tracking-wider text-gray-500">
                 Ваші діалоги
               </h2>
             </div>
@@ -98,7 +98,7 @@ export const SidebarShell = memo(function SidebarShellWrapper() {
   return (
     <Suspense
       fallback={
-        <div className="w-80 h-screen bg-black/40 border-r border-white/10 animate-pulse" />
+        <div className="w-80 h-screen bg-[#0c0d0f] border-r border-white/[0.05] animate-pulse" />
       }
     >
       <SidebarShellBase />

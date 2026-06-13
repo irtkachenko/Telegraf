@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { QueryClientProvider } from '@tanstack/react-query';
 import type { ProfilerOnRenderCallback } from 'react';
@@ -49,15 +49,15 @@ function RenderGuard({ children }: { children: React.ReactNode }) {
   );
 }
 
-export default function Providers({ children }: { children: React.ReactNode }) {
-  const ReactQueryDevtools =
-    process.env.NODE_ENV === 'development'
-      ? lazy(async () => {
-          const mod = await import('@tanstack/react-query-devtools');
-          return { default: mod.ReactQueryDevtools };
-        })
-      : null;
+const ReactQueryDevtools =
+  process.env.NODE_ENV === 'development'
+    ? lazy(async () => {
+        const mod = await import('@tanstack/react-query-devtools');
+        return { default: mod.ReactQueryDevtools };
+      })
+    : null;
 
+export default function Providers({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       <GlobalErrorBoundary>
@@ -73,11 +73,11 @@ export default function Providers({ children }: { children: React.ReactNode }) {
           }}
         />
       </GlobalErrorBoundary>
-      {ReactQueryDevtools ? (
+      {ReactQueryDevtools && (
         <Suspense fallback={null}>
           <ReactQueryDevtools initialIsOpen={false} />
         </Suspense>
-      ) : null}
+      )}
     </QueryClientProvider>
   );
 }

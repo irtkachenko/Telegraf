@@ -82,55 +82,55 @@ function ChatListBase() {
           <Link
             href={`/chat/${chat.id}`}
             onClick={handleChatClick}
-            className={`flex items-center gap-3 mx-2 py-3 px-3 rounded-xl transition-all border group flex-1 ${
+            className={`flex items-center gap-2.5 mx-2 py-2 px-2.5 rounded-lg transition-all border group flex-1 ${
               isActiveChat
-                ? 'bg-white/10 border-white/20 shadow-lg'
-                : 'border-transparent hover:bg-white/5 hover:border-white/5'
+                ? 'bg-white/[0.06] border-white/[0.06] shadow-sm'
+                : 'border-transparent hover:bg-white/[0.02] hover:border-white/[0.02]'
             }`}
           >
             <div className="relative shrink-0">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-white/10 to-transparent flex items-center justify-center border border-white/10 overflow-hidden">
+              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-white/5 to-transparent flex items-center justify-center border border-white/10 overflow-hidden">
                 {partnerImage ? (
                   <div className="relative w-full h-full">
                     <Image
                       src={partnerImage}
                       alt={chatDisplayTitle}
                       fill
-                      sizes="40px"
+                      sizes="32px"
                       className="object-cover"
                     />
                   </div>
                 ) : (
-                  <User className="w-5 h-5 text-gray-400 group-hover:text-white transition-colors" />
+                  <User className="w-4 h-4 text-gray-400 group-hover:text-white transition-colors" />
                 )}
               </div>
               <PresenceIndicator
                 userId={partner?.id || ''}
-                className="absolute bottom-0 right-0 w-2.5 h-2.5"
+                className="absolute bottom-0 right-0 w-2 h-2 border-black"
                 showOffline={false}
               />
             </div>
 
             <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center justify-between gap-1.5">
                 <p
-                  className={`text-sm font-medium truncate transition-colors flex-1 min-w-0 ${
-                    isActiveChat ? 'text-white' : 'text-gray-200 group-hover:text-white'
+                  className={`text-xs font-semibold truncate transition-colors flex-1 min-w-0 ${
+                    isActiveChat ? 'text-white' : 'text-gray-300 group-hover:text-white'
                   }`}
                 >
                   {chatDisplayTitle}
                 </p>
 
                 {lastMessage && (
-                  <span className="text-[10px] text-gray-500 whitespace-nowrap">
+                  <span className="text-[9px] text-gray-500 whitespace-nowrap">
                     {formatRelativeTime(lastMessage.created_at)}
                   </span>
                 )}
               </div>
 
-              <div className="flex items-center justify-between gap-2 mt-0.5">
+              <div className="flex items-center justify-between gap-1.5 mt-0.5">
                 <p
-                  className={`text-[11px] truncate flex-1 transition-colors ${
+                  className={`text-[10px] truncate flex-1 transition-colors ${
                     isActiveChat ? 'text-gray-300' : 'text-gray-500'
                   }`}
                 >
@@ -141,23 +141,23 @@ function ChatListBase() {
                       : 'Немає повідомлень')}
                 </p>
                 {isUnread && (
-                  <div className="w-2 h-2 bg-blue-500 rounded-full shadow-[0_0_8px_rgba(59,130,246,0.5)] shrink-0" />
+                  <div className="w-1.5 h-1.5 bg-[#5e6ad2] rounded-full shadow-[0_0_6px_rgba(94,106,210,0.6)] shrink-0" />
                 )}
               </div>
             </div>
           </Link>
         </ContextMenuTrigger>
 
-        <ContextMenuContent className="z-[110]">
-          <ContextMenuItem onClick={handleChatClick} className="gap-2">
-            <MessageSquare className="w-4 h-4" /> Open Chat
+        <ContextMenuContent className="z-[110] bg-[#121216] border border-white/[0.08] text-white rounded-md p-1">
+          <ContextMenuItem onClick={handleChatClick} className="gap-2 text-xs py-1.5 rounded-md hover:bg-white/5">
+            <MessageSquare className="w-3.5 h-3.5" /> Відкрити чат
           </ContextMenuItem>
-          <ContextMenuSeparator />
+          <ContextMenuSeparator className="bg-white/[0.05]" />
           <ContextMenuItem
             onClick={() => handleDeleteChat(chat.id)}
-            className="text-red-400 focus:text-red-400 focus:bg-red-500/10 gap-2"
+            className="text-red-400 focus:text-red-400 focus:bg-red-500/10 gap-2 text-xs py-1.5 rounded-md"
           >
-            <Trash2 className="w-4 h-4" /> Delete Chat
+            <Trash2 className="w-3.5 h-3.5" /> Видалити чат
           </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>
