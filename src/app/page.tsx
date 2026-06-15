@@ -36,7 +36,7 @@ export default function Home() {
       {/* Hero content */}
       <main className="relative z-10 flex-1 flex flex-col items-center justify-center text-center px-4 -mt-16">
         <h2 className="text-3xl sm:text-4xl md:text-5xl font-extrabold text-white mb-3 tracking-[-0.03em] max-w-4xl leading-[1.15]">
-          Telegraf 
+           
         </h2>
         <p className="text-gray-400 font-medium tracking-tight text-sm sm:text-base mb-10 opacity-80">
           Sign in to start chatting
