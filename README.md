@@ -4,6 +4,11 @@
 
 Telegraf is a realtime 1:1 messaging web application built on Next.js App Router and Supabase.
 
+__Telegraf (Realtime Chat)__
+
+- __Стек:__ TypeScript, Next.js (App Router), React, Node.js, Supabase (Postgres, Auth, Storage, Realtime), Tailwind CSS v4, TanStack Query, Zustand, Radix UI, Framer Motion, Vercel.
+- __Результат:__ Розробив вебчат із миттєвим обміном повідомленнями, realtime typing indicators та online presence. Спроектував PostgreSQL базу даних на Supabase з RLS-політиками, rate limiting та тригерами. Налаштував приватний storage bucket із Signed URLs для медіафайлів. Інтегрував Google OAuth через Supabase Auth. Реалізував клієнтське кешування (TanStack Query + Zustand), віртуалізований список повідомлень (react-virtuoso) та компресію зображень на клієнті. Задеплоїв на Vercel.
+
 Core capabilities:
 - Google OAuth login via Supabase Auth
 - Chat list + chat detail with realtime message updates
@@ -11,16 +16,7 @@ Core capabilities:
 - Typing indicator + online presence
 - File attachments via Supabase Storage (private bucket + signed URLs)
 
-## 2. Tech Stack
-
-- Runtime: Node.js `>=22`
-- Package manager: `pnpm >=10`
-- Frontend: Next.js `16`, React `19`, TypeScript `5`
-- State/query: TanStack Query, Zustand
-- UI: Tailwind CSS v4, Radix UI, Framer Motion
-- Backend services: Supabase (Postgres, Auth, Storage, Realtime)
-
-## 3. High-Level Architecture
+## 2. High-Level Architecture
 
 Client layers:
 1. `components/` -> view/UI and user interaction
@@ -38,7 +34,7 @@ Routing model:
 - Public routes: `/`, `/auth/*`
 - Protected routes: `/chat`, `/chat/[id]`
 
-## 4. Request/State Flows
+## 3. Request/State Flows
 
 Auth flow:
 1. User clicks sign-in (`handleSignIn`)
@@ -62,7 +58,7 @@ Attachment flow:
 3. Signed URLs are generated and cached in Zustand store
 4. Message stores attachment metadata in `messages.attachments`
 
-## 5. Directory Guide
+## 4. Directory Guide
 
 - `src/app/` -> App Router pages and route handlers
 - `src/components/` -> UI components by feature
@@ -71,11 +67,14 @@ Attachment flow:
 - `src/lib/` -> shared utilities and adapters
 - `src/store/` -> Zustand stores
 - `src/types/` -> app and generated DB types
+- `src/config/` -> static configuration files
+- `src/shared/` -> shared error handling and utilities
+- `src/utils/` -> file validation utilities
 - `supabase/migrations/` -> schema, policies, RPCs, rate limits
 - `scripts/` -> helper scripts for DB migrations and type generation
 - `docs/` -> additional design/implementation notes
 
-## 6. Environment Variables
+## 5. Environment Variables
 
 Copy `.env.example` to `.env.local` and set at minimum:
 
@@ -95,64 +94,61 @@ Notes:
 - Never expose `SUPABASE_SERVICE_ROLE_KEY` to the client.
 - `NEXT_PUBLIC_*` variables are bundled for browser runtime.
 
-## 7. Local Development
+## 6. Local Development
 
 Install dependencies:
 
 ```bash
-pnpm setup
+npm install
 ```
 
 Run dev server:
 
 ```bash
-pnpm dev
+npm run dev
 ```
 
 Build production bundle:
 
 ```bash
-pnpm build
-pnpm start
+npm run build
+npm run start
 ```
 
-## 8. Package Scripts
+## 7. Package Scripts
 
-- `pnpm dev` -> Next dev server
-- `pnpm build` -> production build
-- `pnpm start` -> run production server
-- `pnpm lint` -> ESLint for `src`
-- `pnpm format` -> format `src` via Biome
-- `pnpm check` -> Biome check (with write) + ESLint
-- `pnpm setup` -> install dependencies (non-frozen, rolling mode)
-- `pnpm bootstrap` -> install + regenerate Supabase TS types
-- `pnpm deps:update` -> bump dependencies to latest allowed versions
-- `pnpm verify` -> lint + typecheck + production build
-- `pnpm generate-types` -> regenerate `src/types/supabase.ts`
-- `pnpm push-migrations` -> link Supabase project + push migrations
+- `npm run dev` -> Next dev server (with webpack)
+- `npm run build` -> production build
+- `npm run start` -> run production server
+- `npm run lint` -> ESLint for `src`
+- `npm run format` -> format `src` via Biome
+- `npm run check` -> Biome check (with write) + ESLint
+- `npm run generate-types` -> regenerate `src/types/supabase.ts`
+- `npm run push-migrations` -> link Supabase project + push migrations
+- `npm run verify` -> lint + typecheck + production build
 
-## 9. Database and Type Workflow
+## 8. Database Workflow
 
 Migrations:
 - SQL files are in `supabase/migrations/`.
-- Apply with `pnpm push-migrations`.
+- Apply with `npm run push-migrations`.
 
 Type generation:
-- `pnpm generate-types` writes generated schema types to `src/types/supabase.ts`.
+- `npm run generate-types` writes generated schema types to `src/types/supabase.ts`.
 - Run this after schema/RPC changes.
 
-## 10. Quality and Validation Commands
+## 9. Quality and Validation Commands
 
 Recommended before merge:
 
 ```bash
-pnpm lint
-pnpm exec tsc --noEmit
-pnpm build
-pnpm audit --prod
+npm run lint
+npx tsc --noEmit
+npm run build
+npm audit --prod
 ```
 
-## 11. Docker
+## 10. Docker
 
 Development (hot reload):
 
@@ -178,8 +174,7 @@ Stop prod stack:
 docker compose -f docker-compose.prod.yml down
 ```
 
-## 12. Live Demo
+## 11. Live Demo
 
 The project is deployed on Vercel and accessible at:
 https://telegraf-five-zeta.vercel.app/
-

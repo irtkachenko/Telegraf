@@ -5,16 +5,28 @@ import { handleError } from '@/shared/lib/error-handler';
 import { AuthError, DatabaseError } from '@/shared/lib/errors';
 
 export async function handleSignIn() {
-  const supabase = createClient();
-  const { error } = await supabase.auth.signInWithOAuth({
-    provider: 'google',
-    options: {
-      redirectTo: `${window.location.origin}/auth/callback`,
-    },
-  });
+  try {
+    const supabase = createClient();
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback`,
+      },
+    });
 
-  if (error) {
-    throw new AuthError(error.message, 'SIGN_IN_ERROR', error.status);
+    if (error) {
+      handleError(
+        new AuthError(error.message, 'SIGN_IN_ERROR', error.status),
+        'Auth',
+        { enableToast: true },
+      );
+    }
+  } catch (err) {
+    handleError(
+      err instanceof Error ? err : new AuthError('Невідома помилка входу', 'SIGN_IN_ERROR', 500),
+      'Auth',
+      { enableToast: true },
+    );
   }
 }
 

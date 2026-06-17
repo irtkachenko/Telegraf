@@ -39,9 +39,6 @@ export default function Home() {
         >
           <LogIn className="w-3.5 h-3.5" />
           <span>Увійти</span>
-          <span className="hidden sm:inline-block text-[10px] text-gray-500 bg-white/5 px-1 py-0.5 rounded border border-white/5 ml-1">
-            ⌘L
-          </span>
         </button>
       </header>
 
@@ -93,17 +90,12 @@ export default function Home() {
         {/* Interactive App Mockup Preview */}
         <div className="relative mt-16 sm:mt-24 w-full max-w-5xl rounded-xl border border-white/[0.08] bg-[#0c0d0f]/90 shadow-[0_32px_64px_rgba(0,0,0,0.8)] overflow-hidden animate-border-glow select-none">
           {/* Mock Window Header */}
-          <div className="h-11 border-b border-white/[0.05] bg-[#111214] flex items-center justify-between px-4">
+          <div className="h-11 border-b border-white/[0.05] bg-[#111214] flex items-center px-4">
             <div className="flex items-center gap-1.5">
               <div className="w-2.5 h-2.5 rounded-full bg-red-500/20 group hover:bg-red-500 transition-colors" />
               <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/20 group hover:bg-yellow-500 transition-colors" />
               <div className="w-2.5 h-2.5 rounded-full bg-green-500/20 group hover:bg-green-500 transition-colors" />
-              <span className="text-xs text-gray-500 font-mono ml-4 tracking-wider">Telegraf Workspace</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] text-gray-500 bg-white/5 border border-white/5 px-2 py-0.5 rounded-md">
-                ⌘K для швидкого пошуку
-              </span>
+              <span className="text-xs text-gray-500 font-mono ml-4 tracking-wider">Telegraf Messenger</span>
             </div>
           </div>
 
@@ -111,11 +103,8 @@ export default function Home() {
           <div className="h-[450px] flex">
             {/* Mock Sidebar */}
             <div className="w-60 border-r border-white/[0.05] bg-[#0c0d0f] p-3 flex flex-col gap-4">
-              <div className="flex items-center justify-between px-2 py-1">
-                <span className="text-xs font-bold text-gray-200">Робочий простір</span>
-                <span className="text-[10px] text-[#5e6ad2] font-semibold bg-[#5e6ad2]/10 px-1.5 py-0.5 rounded">
-                  PRO
-                </span>
+              <div className="flex items-center px-2 py-1">
+                <span className="text-xs font-bold text-gray-200">Telegraf</span>
               </div>
 
               {/* View Toggle */}
