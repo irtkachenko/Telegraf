@@ -2,6 +2,7 @@ export * from './useChatDetails';
 export * from './useChatEvents';
 export * from './useChats';
 export * from './useChatsRealtime';
+export * from './useDecryptedMessages';
 export * from './useDeleteChat';
 export * from './useDeleteMessage';
 export * from './useEditMessage';

@@ -7,6 +7,7 @@ import type {
   User as SupabaseUser,
 } from '@supabase/supabase-js';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { useE2EEInit } from '@/hooks/keys';
 import { useGlobalRealtime } from '@/hooks/useGlobalRealtime';
 import { createClient } from '@/lib/supabase/client';
 import { handleError } from '@/shared/lib/error-handler';
@@ -164,6 +165,9 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   }, [supabase, handleAuthStateChange]);
 
   useGlobalRealtime(supabaseUser);
+
+  // Ініціалізація E2EE ключів для автентифікованого користувача
+  useE2EEInit();
 
   const value = useMemo(
     () => ({

@@ -1,2 +1,2 @@
 export { storageApi } from './storage.service';
-export { uploadFileOptimized } from './upload.service';
+export { uploadFileOptimized, uploadEncryptedFileOptimized } from './upload.service';

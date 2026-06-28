@@ -47,7 +47,7 @@ export const messagesApi = {
   },
 
   /**
-   * Send a new message
+   * Send a new message (plaintext, unencrypted)
    */
   sendMessage: async (
     chatId: string,
@@ -81,6 +81,50 @@ export const messagesApi = {
     // Return raw RPC result. The realtime INSERT event handler in useChatsRealtime
     // will hydrate reply_to and sender fields when it processes the event,
     // eliminating the need for an extra getMessage call here.
+    return {
+      ...(data as Message),
+      attachments: (data as Message).attachments || [],
+    };
+  },
+
+  /**
+   * Send an encrypted message (E2EE).
+   * The `content` field stores a placeholder for non-E2EE clients,
+   * while `encrypted_content` + `encrypted_iv` hold the actual encrypted payload.
+   */
+  sendEncryptedMessage: async (
+    chatId: string,
+    payload: {
+      sender_id: string;
+      content?: string;
+      encrypted_content: string;
+      encrypted_iv: string;
+      reply_to_id?: string;
+      attachments?: Attachment[];
+      client_id?: string;
+    },
+  ) => {
+    const { data, error } = await supabase.rpc('rpc_send_encrypted_message', {
+      p_chat_id: chatId,
+      p_content: payload.content || null,
+      p_encrypted_content: payload.encrypted_content,
+      p_encrypted_iv: payload.encrypted_iv,
+      p_reply_to_id: payload.reply_to_id || null,
+      p_attachments: payload.attachments || [],
+      p_client_id: payload.client_id || null,
+    });
+
+    if (error) {
+      const networkError = new NetworkError(
+        error.message,
+        'messages',
+        'MESSAGE_SEND_ERROR',
+        error.status || 500,
+      );
+      handleError(networkError, 'MessagesApi.sendEncryptedMessage');
+      throw networkError;
+    }
+
     return {
       ...(data as Message),
       attachments: (data as Message).attachments || [],

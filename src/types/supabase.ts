@@ -83,6 +83,8 @@ export type Database = {
           client_id: string | null
           content: string | null
           created_at: string
+          encrypted_content: string | null
+          encrypted_iv: string | null
           id: string
           reply_to_id: string | null
           sender_id: string
@@ -94,6 +96,8 @@ export type Database = {
           client_id?: string | null
           content?: string | null
           created_at?: string
+          encrypted_content?: string | null
+          encrypted_iv?: string | null
           id?: string
           reply_to_id?: string | null
           sender_id: string
@@ -105,6 +109,8 @@ export type Database = {
           client_id?: string | null
           content?: string | null
           created_at?: string
+          encrypted_content?: string | null
+          encrypted_iv?: string | null
           id?: string
           reply_to_id?: string | null
           sender_id?: string
@@ -233,6 +239,35 @@ export type Database = {
         }
         Relationships: []
       }
+      public_keys: {
+        Row: {
+          created_at: string
+          public_key_jwk: Json
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          public_key_jwk: Json
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          public_key_jwk?: Json
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "public_keys_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -293,6 +328,30 @@ export type Database = {
         Args: { p_chat_id: string; p_message_id: string }
         Returns: undefined
       }
+      rpc_send_encrypted_message: {
+        Args: {
+          p_attachments?: Json
+          p_chat_id: string
+          p_client_id?: string
+          p_content?: string
+          p_encrypted_content?: string
+          p_encrypted_iv?: string
+          p_reply_to_id?: string
+        }
+        Returns: {
+          attachments: Json
+          chat_id: string
+          client_id: string | null
+          content: string | null
+          created_at: string
+          encrypted_content: string | null
+          encrypted_iv: string | null
+          id: string
+          reply_to_id: string | null
+          sender_id: string
+          updated_at: string | null
+        }
+      }
       rpc_send_message: {
         Args: {
           p_attachments?: Json
@@ -318,6 +377,14 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      rpc_get_public_key: {
+        Args: { p_user_id: string }
+        Returns: Json
+      }
+      rpc_upsert_public_key: {
+        Args: { p_public_key_jwk: Json }
+        Returns: undefined
       }
       search_users: {
         Args: { p_query: string }

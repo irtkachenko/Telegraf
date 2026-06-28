@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { useSupabaseAuth } from '@/components/auth/AuthProvider';
 import { useEditMessage } from '@/hooks/chat';
 import { useSendMessageWithFiles } from '@/hooks/chat/useSendMessageWithFiles';
+import { useSharedSecret } from '@/hooks/keys';
 import { useStorageLimits } from '@/hooks/useDynamicStorageConfig';
 import { useOptimisticAttachmentLazy } from '@/hooks/useOptimisticAttachmentLazy';
 import { cn } from '@/lib/utils';
@@ -23,6 +24,7 @@ interface ChatInputProps {
   editingMessage?: Message | null;
   onEditCancel?: () => void;
   onMessageSent?: () => void;
+  recipientId?: string;
 }
 
 export default function ChatInput({
@@ -33,6 +35,7 @@ export default function ChatInput({
   editingMessage,
   onEditCancel,
   onMessageSent,
+  recipientId,
 }: ChatInputProps) {
   const [content, setContent] = useState('');
   const { user } = useSupabaseAuth();
@@ -40,7 +43,10 @@ export default function ChatInput({
     useOptimisticAttachmentLazy();
   const { getAcceptString } = useStorageLimits();
 
-  const sendMessageWithFiles = useSendMessageWithFiles(chatId);
+  // Pre-load the shared secret for E2EE (caches in react-query)
+  useSharedSecret(chatId, recipientId);
+
+  const sendMessageWithFiles = useSendMessageWithFiles(chatId, { recipientId });
   const editMessage = useEditMessage(chatId);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);

@@ -13,6 +13,7 @@ import { ConfirmationDialog } from '@/components/ui/confirmation-dialog';
 import {
   useChatDetails,
   useChatEvents,
+  useDecryptChatMessages,
   useDeleteMessage,
   useMessages,
   useScrollToMessage,
@@ -52,6 +53,10 @@ export default function ChatPage() {
   const { typingUsers, setTyping } = useChatEvents(id, supabaseUser);
   const { onlineUsers } = usePresence();
   const deleteMessage = useDeleteMessage(id);
+
+  // Дешифрування повідомлень E2EE
+  const otherParticipant = chat?.participants?.find((p) => p.id !== user?.id);
+  useDecryptChatMessages(id, otherParticipant?.id, messages);
 
   const { scrollToMessage, highlightedId } = useScrollToMessage(
     virtuosoRef,
@@ -241,7 +246,6 @@ export default function ChatPage() {
     return map;
   }, [messages]);
 
-  const otherParticipant = chat?.participants?.find((p) => p.id !== user?.id);
   const otherParticipantReadId =
     user?.id && chat
       ? chat.user_id === user.id
@@ -422,6 +426,7 @@ export default function ChatPage() {
         <div className="max-w-5xl mx-auto px-2 sm:px-6 py-2 sm:py-3.5">
           <ChatInput
             chatId={id}
+            recipientId={otherParticipant?.id}
             setTyping={setTyping}
             replyToId={replyingTo?.id}
             onReplyCancel={() => setReplyingTo(null)}

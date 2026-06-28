@@ -6,7 +6,13 @@ import { toast } from 'sonner';
 import { useSupabaseAuth } from '@/components/auth/AuthProvider';
 import { useStorageLimits } from '@/hooks/useDynamicStorageConfig';
 import { extractStorageRef, type StorageRef } from '@/lib/storage-utils';
-import { messagesApi, storageApi, uploadFileOptimized } from '@/services';
+import {
+  encryptMessageContent,
+  encryptFileAttachment,
+  messagesApi,
+  storageApi,
+  uploadFileOptimized,
+} from '@/services';
 import { handleError } from '@/shared/lib/error-handler';
 import { AuthError, NetworkError, ValidationError } from '@/shared/lib/errors';
 import type { Attachment, Message } from '@/types';
@@ -60,7 +66,12 @@ function buildReplyDetails(
 /**
  * Хук для паралельної відправки повідомлень з файлами
  */
-export function useSendMessageWithFiles(chatId: string) {
+export function useSendMessageWithFiles(
+  chatId: string,
+  options?: {
+    recipientId?: string;
+  },
+) {
   const { user } = useSupabaseAuth();
   const queryClient = useQueryClient();
   const { validateFile } = useStorageLimits();
@@ -93,6 +104,22 @@ export function useSendMessageWithFiles(chatId: string) {
     }
   };
 
+  /**
+   * Спроба отримати спільний секрет з кешу react-query.
+   * Якщо shared secret вже закешований (хуком useSharedSecret),
+   * використовуємо його для шифрування.
+   */
+  const getCachedSharedSecret = (): CryptoKey | null => {
+    if (!user || !options?.recipientId) return null;
+    const cached = queryClient.getQueryData<CryptoKey>([
+      'shared-secret',
+      chatId,
+      user.id,
+      options.recipientId,
+    ]);
+    return cached ?? null;
+  };
+
   return useMutation({
     mutationFn: async ({ content, files, reply_to_id, client_id }: SendMessageWithFilesParams) => {
       if (!user) throw new AuthError('Ви не авторизовані', 'SEND_MESSAGE_AUTH_REQUIRED', 401);
@@ -119,9 +146,19 @@ export function useSendMessageWithFiles(chatId: string) {
         }
       }
 
-      // Паралельне завантаження файлів
+      // Перевіряємо, чи доступний спільний секрет для E2EE
+      const sharedSecret = getCachedSharedSecret();
+      const shouldEncrypt = !!sharedSecret;
+
+      // Паралельне завантаження файлів (з шифруванням якщо E2EE активне)
       const uploadResults = await Promise.allSettled(
-        files.map((file) => uploadFileOptimized(file, chatId, user.id)),
+        files.map((file) => {
+          if (shouldEncrypt) {
+            const { uploadEncryptedFileOptimized } = require('@/services');
+            return uploadEncryptedFileOptimized(file, chatId, user.id, sharedSecret!);
+          }
+          return uploadFileOptimized(file, chatId, user.id);
+        }),
       );
 
       // Обробка результатів завантаження
@@ -141,8 +178,47 @@ export function useSendMessageWithFiles(chatId: string) {
         throw new ValidationError('Не вдалося завантажити файли', 'files', 'UPLOAD_FAILED', 500);
       }
 
-      // Відправляємо повідомлення тільки з успішно завантаженими файлами
       const clientId = client_id ?? crypto.randomUUID();
+
+      // E2EE: шифруємо текст та використовуємо sendEncryptedMessage
+      if (shouldEncrypt) {
+        const { encryptMessageContent } = await import('@/services');
+        const encrypted = await encryptMessageContent(sharedSecret!, content.trim());
+
+        const messagePayload = {
+          sender_id: user.id,
+          content: '🔒', // Плейсхолдер для клієнтів без E2EE
+          encrypted_content: encrypted.encryptedContent,
+          encrypted_iv: encrypted.encryptedIv,
+          reply_to_id: reply_to_id || undefined,
+          attachments: successfulUploads,
+          client_id: clientId,
+        };
+
+        let savedMessage: Message;
+        try {
+          savedMessage = await messagesApi.sendEncryptedMessage(chatId, messagePayload);
+        } catch (error) {
+          await cleanupFailedUploads(successfulUploads);
+          throw error;
+        }
+
+        if (failedUploads.length > 0) {
+          const errorMessages = failedUploads
+            .map(({ file, error }) => {
+              const ec = error && typeof error === 'object' && 'status' in error
+                ? (error.status as number) : 500;
+              const et = ec === 400 ? 'Неправильний формат файлу'
+                : ec === 413 ? 'Файл занадто великий' : 'Помилка завантаження';
+              return `${file.name}: ${et} (${ec})`;
+            }).join(', ');
+          toast.error(`Помилка завантаження файлів: ${errorMessages}`);
+        }
+
+        return { message: savedMessage, uploadedFiles: successfulUploads, failedFiles: failedUploads, clientId, isEncrypted: true };
+      }
+
+      // Без шифрування (plaintext)
       const messagePayload = {
         sender_id: user.id,
         content: content.trim(),
@@ -155,29 +231,19 @@ export function useSendMessageWithFiles(chatId: string) {
       try {
         savedMessage = await messagesApi.sendMessage(chatId, messagePayload);
       } catch (error) {
-        // Best-effort cleanup for already uploaded files
         await cleanupFailedUploads(successfulUploads);
         throw error;
       }
 
-      // Очищення preview URLs (вони створюються в onMutate)
       if (failedUploads.length > 0) {
         const errorMessages = failedUploads
           .map(({ file, error }) => {
-            const errorCode =
-              error && typeof error === 'object' && 'status' in error
-                ? (error.status as number)
-                : 500;
-            const errorType =
-              errorCode === 400
-                ? 'Неправильний формат файлу'
-                : errorCode === 413
-                  ? 'Файл занадто великий'
-                  : 'Помилка завантаження';
-            return `${file.name}: ${errorType} (${errorCode})`;
-          })
-          .join(', ');
-
+            const ec = error && typeof error === 'object' && 'status' in error
+              ? (error.status as number) : 500;
+            const et = ec === 400 ? 'Неправильний формат файлу'
+              : ec === 413 ? 'Файл занадто великий' : 'Помилка завантаження';
+            return `${file.name}: ${et} (${ec})`;
+          }).join(', ');
         toast.error(`Помилка завантаження файлів: ${errorMessages}`);
       }
 
@@ -186,6 +252,7 @@ export function useSendMessageWithFiles(chatId: string) {
         uploadedFiles: successfulUploads,
         failedFiles: failedUploads,
         clientId,
+        isEncrypted: false,
       };
     },
 

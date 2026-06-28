@@ -42,3 +42,49 @@ export async function uploadFileOptimized(
     );
   }
 }
+
+import { encryptFileAttachment } from '@/services/crypto/encryption.service';
+
+/**
+ * Завантаження зашифрованого файлу.
+ * Шифрує файл перед відправкою на сервер, метадані зберігаються в зашифрованому вигляді.
+ */
+export async function uploadEncryptedFileOptimized(
+  file: File,
+  chatId: string,
+  userId: string,
+  sharedSecret: CryptoKey,
+): Promise<Attachment> {
+  try {
+    // 1. Шифруємо файл та його метадані
+    const encrypted = await encryptFileAttachment(sharedSecret, file);
+
+    // 2. Завантажуємо зашифрований файл (з обфускованою назвою)
+    const encryptedFile = new File([encrypted.encryptedBlob], encrypted.obfuscatedName, {
+      type: 'application/octet-stream',
+    });
+
+    const attachment = await storageApi.uploadAttachment(encryptedFile, chatId, userId);
+
+    // 3. Додаємо зашифровані метадані до вкладення
+    return {
+      ...attachment,
+      metadata: {
+        ...attachment.metadata,
+        name: file.name,
+        encrypted_metadata: encrypted.encryptedMetadata.ciphertext,
+        encrypted_metadata_iv: encrypted.encryptedMetadata.iv,
+      },
+    };
+  } catch (error) {
+    const statusCode =
+      error && typeof error === 'object' && 'status' in error ? (error.status as number) : 500;
+
+    throw new NetworkError(
+      `Помилка завантаження файлу ${file.name}: ${error instanceof Error ? error.message : 'Невідома помилка'}`,
+      'file-upload',
+      'ATTACHMENT_UPLOAD_ERROR',
+      statusCode,
+    );
+  }
+}

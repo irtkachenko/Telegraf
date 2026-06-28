@@ -32,6 +32,10 @@ export interface Attachment {
     width?: number;
     height?: number;
     expired?: boolean;
+    /** Зашифровані метадані (ключ файлу + IV + оригінальна назва/тип) — base64 */
+    encrypted_metadata?: string;
+    /** IV для розшифрування метаданих — base64 */
+    encrypted_metadata_iv?: string;
   };
   uploading?: boolean;
 }
