@@ -108,7 +108,7 @@ create or replace function public.rpc_send_encrypted_message(
 ) returns public.messages
     language plpgsql security definer
     set search_path to 'public'
-as $
+as $$
 declare
     new_message public.messages;
     v_is_participant boolean;
@@ -130,6 +130,6 @@ begin
 
     return new_message;
 end;
-$;
+$$;
 
 grant execute on function public.rpc_send_encrypted_message(uuid, text, text, text, uuid, jsonb, uuid) to authenticated;
