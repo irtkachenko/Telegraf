@@ -69,8 +69,9 @@ const MessageBubble = memo(
         animate={{ opacity: 1 }}
         transition={{ duration: 0.12, ease: 'easeOut' }}
         className={cn(
-          'w-full flex gap-3 items-start py-2.5 px-4 rounded-md transition-all duration-350 relative group',
-          isHighlighed ? 'bg-[#5e6ad2]/8' : 'hover:bg-white/[0.01]',
+          'w-full flex items-start gap-2.5 py-1.5 px-5 transition-all duration-200 relative group',
+          isMe ? 'flex-row-reverse' : 'flex-row',
+          isHighlighed ? 'bg-[#5e6ad2]/6' : 'hover:bg-white/[0.02]',
         )}
       >
         {/* Highlight Overlay */}
@@ -80,56 +81,57 @@ const MessageBubble = memo(
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="absolute inset-0 border-l-2 border-[#5e6ad2] pointer-events-none"
+              className="absolute inset-y-1 left-0 w-0.5 bg-[#5e6ad2] rounded-full pointer-events-none"
             />
           )}
         </AnimatePresence>
 
-        {/* Sender Avatar */}
-        <div className="relative w-8 h-8 rounded-full shrink-0 select-none">
-          <div className="w-full h-full rounded-full bg-gradient-to-br from-white/5 to-transparent flex items-center justify-center border border-white/10 overflow-hidden">
-            {senderImage ? (
-              <Image
-                src={senderImage}
-                alt={senderName}
-                fill
-                sizes="32px"
-                className="object-cover"
-              />
-            ) : (
-              <User className="w-4 h-4 text-gray-500" />
-            )}
+        {/* Sender Avatar - only show for other users */}
+        {!isMe && (
+          <div className="relative w-7 h-7 rounded-full shrink-0 select-none mt-1">
+            <div className="w-full h-full rounded-full bg-gradient-to-br from-white/5 to-transparent flex items-center justify-center border border-white/10 overflow-hidden">
+              {senderImage ? (
+                <Image
+                  src={senderImage}
+                  alt={senderName}
+                  fill
+                  sizes="28px"
+                  className="object-cover"
+                />
+              ) : (
+                <User className="w-3.5 h-3.5 text-gray-500" />
+              )}
+            </div>
           </div>
-        </div>
+        )}
+
+        {/* Spacer for alignment when it's my message */}
+        {isMe && <div className="w-7 shrink-0" />}
 
         {/* Message Container */}
-        <div className="flex-1 min-w-0 flex flex-col">
-          {/* Header metadata */}
-          <div className="flex items-baseline gap-2 select-none mb-0.5">
-            <span
-              className={cn(
-                'text-xs font-bold transition-colors',
-                isMe ? 'text-[#8d96e9]' : 'text-gray-200 group-hover:text-white'
-              )}
-            >
-              {senderName}
-            </span>
-            <span className="text-[9px] font-medium text-gray-500" suppressHydrationWarning>
+        <div className={cn('flex flex-col min-w-0 max-w-[75%]', isMe ? 'items-end' : 'items-start')}>
+          {/* Header metadata - Linear style: minimal, compact */}
+          <div className={cn('flex items-center gap-1.5 select-none mb-1', isMe ? 'flex-row-reverse' : 'flex-row')}>
+            {!isMe && (
+              <span className="text-[11px] font-semibold text-gray-400 transition-colors group-hover:text-gray-300">
+                {senderName}
+              </span>
+            )}
+            <span className="text-[10px] font-medium text-gray-600" suppressHydrationWarning>
               {formattedDate}
             </span>
             {isEdited && (
-              <span className="text-[9px] font-medium text-gray-500">(відредаговано)</span>
+              <span className="text-[10px] font-medium text-gray-600">(відредаговано)</span>
             )}
-            
             {/* Delivery/Read status */}
             {isMe && (
-              <span className="inline-flex items-center ml-1">
+              <span className="inline-flex items-center">
                 {message.is_optimistic ? (
-                  <Clock className="w-2.5 h-2.5 text-gray-500" />
+                  <Clock className="w-2.5 h-2.5 text-gray-600" />
                 ) : isRead ? (
-                  <CheckCheck className="w-2.5 h-2.5 text-[#8d96e9]" />
+                  <CheckCheck className="w-2.5 h-2.5 text-[#6b7ae0]" />
                 ) : (
-                  <Check className="w-2.5 h-2.5 text-gray-500" />
+                  <Check className="w-2.5 h-2.5 text-gray-600" />
                 )}
               </span>
             )}
@@ -141,10 +143,10 @@ const MessageBubble = memo(
                 <div
                   className={cn(
                     'min-w-0 max-w-full flex flex-col',
-                    isEditing && 'ring-1 ring-[#5e6ad2]/50 rounded p-1 bg-white/[0.02]',
+                    isEditing && 'ring-1 ring-[#5e6ad2]/40 rounded-lg overflow-hidden',
                   )}
                 >
-                  {/* Reply Target Details */}
+                  {/* Reply Target Details - Linear style: clean card */}
                   {(() => {
                     const rId = message.reply_to_id;
                     if (!rId) return null;
@@ -170,12 +172,15 @@ const MessageBubble = memo(
                           e.stopPropagation();
                           onScrollToMessage(fallbackReply.id);
                         }}
-                        className="mb-1.5 w-full max-w-lg flex flex-col items-start px-2 py-1 rounded bg-white/[0.02] border-l-2 border-[#5e6ad2]/40 cursor-pointer hover:bg-white/[0.04] transition-colors text-[10px] text-left overflow-hidden min-w-0 border-y border-r border-white/[0.03]"
+                        className={cn(
+                          'mb-1.5 w-full max-w-lg flex flex-col items-start px-2.5 py-1.5 rounded-lg bg-white/[0.03] border-l-[3px] border-[#5e6ad2]/50 cursor-pointer hover:bg-white/[0.05] transition-colors text-[11px] text-left overflow-hidden min-w-0',
+                          isMe && 'self-end',
+                        )}
                       >
-                        <span className="font-bold text-[#8d96e9] mb-0.5 truncate w-full block">
+                        <span className="font-semibold text-[#6b7ae0] mb-0.5 truncate w-full block leading-tight">
                           {replySenderName}
                         </span>
-                        <span className="text-gray-400 line-clamp-1 italic">
+                        <span className="text-gray-500 line-clamp-1 leading-snug">
                           {fallbackReply.content ||
                             (fallbackReply.attachments?.length ? '📎 Вкладення' : '...')}
                         </span>
@@ -183,66 +188,76 @@ const MessageBubble = memo(
                     );
                   })()}
 
-                  {/* Text Content */}
-                  {message.content && (
-                    <div className="text-[13px] text-gray-300 leading-relaxed whitespace-pre-wrap break-all sm:break-words block w-full max-w-full overflow-hidden min-w-0">
-                      <Linkify
-                        options={{
-                          target: '_blank',
-                          rel: 'noopener noreferrer',
-                          className:
-                            'text-[#8d96e9] hover:text-white underline underline-offset-4 transition-colors cursor-pointer',
-                          validate: {
-                            url: isValidUrlForLinkify,
-                          },
-                        }}
-                      >
-                        {message.content}
-                      </Linkify>
-                    </div>
-                  )}
-
-                  {/* Media Attachments */}
-                  {mediaAttachments.length > 0 && (
-                    <div className="rounded-lg overflow-hidden mt-1.5 max-w-xl w-full border border-white/[0.05]">
-                      <MessageMediaGrid items={mediaAttachments} onMediaSettled={onMediaSettled} />
-                    </div>
-                  )}
-
-                  {/* Document/File Attachments */}
-                  {fileAttachments.length > 0 && (
-                    <div className="mt-2 space-y-1.5 max-w-md w-full min-w-0">
-                      {fileAttachments.map((file: Attachment) => (
-                        <a
-                          key={file.id}
-                          href={file.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center gap-2.5 p-2 rounded-lg bg-white/[0.02] hover:bg-white/[0.04] transition-all border border-white/[0.05] w-full min-w-0 group"
+                  {/* Bubble Content - Linear style: clean, minimal bubble */}
+                  <div
+                    className={cn(
+                      'rounded-xl px-3.5 py-2.5 w-full',
+                      isMe
+                        ? 'bg-[#5e6ad2]/12 self-end'
+                        : 'bg-white/[0.04] self-start',
+                    )}
+                  >
+                    {/* Text Content */}
+                    {message.content && (
+                      <div className="text-[13px] text-gray-200 leading-relaxed whitespace-pre-wrap break-all sm:break-words block w-full max-w-full overflow-hidden min-w-0">
+                        <Linkify
+                          options={{
+                            target: '_blank',
+                            rel: 'noopener noreferrer',
+                            className:
+                              'text-[#6b7ae0] hover:text-white underline underline-offset-2 transition-colors cursor-pointer',
+                            validate: {
+                              url: isValidUrlForLinkify,
+                            },
+                          }}
                         >
-                          <div className="p-1.5 bg-[#5e6ad2]/10 group-hover:bg-[#5e6ad2]/20 rounded transition-colors shrink-0">
-                            <FileIcon className="w-4 h-4 text-[#8d96e9]" />
-                          </div>
-                          <div className="flex-1 min-w-0 overflow-hidden">
-                            <p className="text-xs font-medium text-gray-200 truncate w-full block">
-                              {file.metadata?.name || 'Файл'}
-                            </p>
-                            <p className="text-[9px] text-gray-500 uppercase tracking-wider mt-0.5">
-                              {file.metadata?.size
-                                ? `${(file.metadata.size / 1024 / 1024).toFixed(2)} MB`
-                                : 'розмір невідомий'}
-                            </p>
-                          </div>
-                          <Download className="w-3.5 h-3.5 text-gray-500 group-hover:text-white shrink-0 transition-colors mr-1" />
-                        </a>
-                      ))}
-                    </div>
-                  )}
+                          {message.content}
+                        </Linkify>
+                      </div>
+                    )}
+
+                    {/* Media Attachments - Linear style: clean grid */}
+                    {mediaAttachments.length > 0 && (
+                      <div className="rounded-lg overflow-hidden mt-2 -mx-1 -mb-1 border border-white/[0.06]">
+                        <MessageMediaGrid items={mediaAttachments} onMediaSettled={onMediaSettled} />
+                      </div>
+                    )}
+
+                    {/* Document/File Attachments - Linear style: clean file card */}
+                    {fileAttachments.length > 0 && (
+                      <div className="mt-2 space-y-1.5 max-w-md w-full min-w-0">
+                        {fileAttachments.map((file: Attachment) => (
+                          <a
+                            key={file.id}
+                            href={file.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-2.5 p-2 rounded-lg bg-white/[0.03] hover:bg-white/[0.06] transition-all w-full min-w-0 group"
+                          >
+                            <div className="p-1.5 bg-[#5e6ad2]/10 rounded transition-colors shrink-0">
+                              <FileIcon className="w-3.5 h-3.5 text-[#6b7ae0]" />
+                            </div>
+                            <div className="flex-1 min-w-0 overflow-hidden">
+                              <p className="text-xs font-medium text-gray-300 truncate w-full block group-hover:text-white transition-colors">
+                                {file.metadata?.name || 'Файл'}
+                              </p>
+                              <p className="text-[10px] text-gray-600 mt-0.5">
+                                {file.metadata?.size
+                                  ? `${(file.metadata.size / 1024 / 1024).toFixed(2)} MB`
+                                  : 'розмір невідомий'}
+                              </p>
+                            </div>
+                            <Download className="w-3.5 h-3.5 text-gray-600 group-hover:text-gray-300 shrink-0 transition-colors" />
+                          </a>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </ContextMenuTrigger>
 
-            <ContextMenuContent className="z-[110] bg-[#121216] border border-white/[0.08] text-white rounded-md p-1 w-44">
+            <ContextMenuContent className="z-[110] bg-[#121216] border border-white/[0.08] text-white rounded-lg p-1 w-44 shadow-xl">
               <ContextMenuItem onClick={() => onReply(message)} className="gap-2 text-xs py-1.5 rounded-md hover:bg-white/5 cursor-pointer">
                 <Reply className="w-3.5 h-3.5" /> Відповісти
               </ContextMenuItem>
