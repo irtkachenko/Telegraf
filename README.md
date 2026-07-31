@@ -4,6 +4,8 @@
 
 Telegraf is a realtime 1:1 messaging web application built on Next.js App Router and Supabase.
 
+**Try it live:** [https://telegraf-navy.vercel.app/](https://telegraf-navy.vercel.app/)
+
 __Telegraf (Realtime Chat)__
 
 - __Стек:__ TypeScript, Next.js (App Router), React, Node.js, Supabase (Postgres, Auth, Storage, Realtime), Tailwind CSS v4, TanStack Query, Zustand, Radix UI, Framer Motion, Vercel.
@@ -174,7 +176,3 @@ Stop prod stack:
 docker compose -f docker-compose.prod.yml down
 ```
 
-## 11. Live Demo
-
-The project is deployed on Vercel and accessible at:
-https://telegraf-five-zeta.vercel.app/
