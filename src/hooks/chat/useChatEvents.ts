@@ -88,19 +88,32 @@ export function useChatEvents(chatId: string, user: User | null) {
     if (!channelRef.current) return;
 
     const now = Date.now();
-    // Throttle: РІС–РґРїСЂР°РІР»СЏС”РјРѕ СЃС‚Р°С‚СѓСЃ РєРѕР¶РЅС– 2.5 СЃРµРєСѓРЅРґРё
-    if (typing && now - lastSentRef.current < 2500) return;
-
-    channelRef.current.track({ user_id: userIdRef.current, isTyping: typing });
-    if (typing) lastSentRef.current = now;
-
-    // РђРІС‚РѕРјР°С‚РёС‡РЅРµ РІРёРјРєРЅРµРЅРЅСЏ СЃС‚Р°С‚СѓСЃСѓ С‡РµСЂРµР· 3 СЃРµРєСѓРЅРґРё Р±РµР·РґС–СЏР»СЊРЅРѕСЃС‚С–
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    if (typing) {
-      timeoutRef.current = setTimeout(() => {
-        channelRef.current?.track({ user_id: userIdRef.current, isTyping: false });
-      }, 3000);
+    
+    // Clear any existing auto-clear timeout
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
     }
+
+    // If we're setting typing to false, send immediately and return
+    if (!typing) {
+      channelRef.current.track({ user_id: userIdRef.current, isTyping: false });
+      return;
+    }
+
+    // Throttle: send typing status every 2.5 seconds
+    if (now - lastSentRef.current < 2500) return;
+
+    channelRef.current.track({ user_id: userIdRef.current, isTyping: true });
+    lastSentRef.current = now;
+
+    // Auto-clear typing status after 3 seconds of inactivity
+    timeoutRef.current = setTimeout(() => {
+      if (channelRef.current) {
+        channelRef.current.track({ user_id: userIdRef.current, isTyping: false });
+      }
+      timeoutRef.current = null;
+    }, 3000);
   }, []);
 
   return { typingUsers, setTyping };

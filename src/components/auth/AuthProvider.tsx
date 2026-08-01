@@ -65,6 +65,38 @@ async function fetchDbProfile(
   }
 }
 
+/**
+ * Upsert user profile into the `users` table to ensure the user has a DB entry.
+ * This fixes the issue where users who signed up before the handle_new_user migration
+ * don't have entries in the users table, causing message.sender to be null.
+ */
+async function upsertUserProfile(
+  supabase: ReturnType<typeof createClient>,
+  supabaseUser: SupabaseUser,
+): Promise<void> {
+  try {
+    const metadata = supabaseUser.user_metadata as Record<string, unknown> | undefined;
+    const name = (metadata?.name as string) || (metadata?.full_name as string) || supabaseUser.email?.split('@')[0] || null;
+    const image = (metadata?.avatar_url as string) || (metadata?.picture as string) || null;
+
+    const { error } = await supabase.from('users').upsert(
+      {
+        id: supabaseUser.id,
+        email: supabaseUser.email || '',
+        name,
+        image,
+      },
+      { onConflict: 'id' },
+    );
+
+    if (error && process.env.NODE_ENV === 'development') {
+      console.warn('Failed to upsert user profile:', error.message);
+    }
+  } catch {
+    // Silently fail - this is a non-critical operation
+  }
+}
+
 export default function AuthProvider({ children }: { children: React.ReactNode }) {
   const [supabaseUser, setSupabaseUser] = useState<SupabaseUser | null>(null);
   const [user, setUser] = useState<AppUser | null>(null);
@@ -77,6 +109,9 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
         setUser(null);
         return;
       }
+
+      // Ensure the user has a profile in the users table
+      await upsertUserProfile(supabase, supabaseUser);
 
       const dbProfile = await fetchDbProfile(supabase, supabaseUser);
       const normalizedUser = UserUtils.normalize(supabaseUser, dbProfile);

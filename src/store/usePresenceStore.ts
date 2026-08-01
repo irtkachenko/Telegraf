@@ -153,6 +153,10 @@ function startHeartbeat(manager: PresenceManager): void {
         user_id: manager.userId,
         online_at: new Date().toISOString(),
       });
+      
+      // Periodically update last_seen so the "last seen" time shows
+      // when the user was last active, not just when they left the page.
+      void updateLastSeen();
     }
   }, HEARTBEAT_INTERVAL);
 }
