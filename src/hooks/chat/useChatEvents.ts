@@ -22,6 +22,9 @@ export function useChatEvents(chatId: string, user: User | null) {
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastSentRef = useRef<number>(0);
   const userIdRef = useRef<string | null>(null);
+  // Receiver-side safety net: per-user timers that force-clear the typing
+  // indicator if no typing update arrives within TYPING_STALE_MS.
+  const typingTimeoutsRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
 
   // Update userId ref when user changes
   useEffect(() => {
@@ -40,6 +43,29 @@ export function useChatEvents(chatId: string, user: User | null) {
         }
       });
     });
+
+    // Receiver-side safety net: schedule a force-clear for each user that is
+    // currently typing. If the sender's tab crashes or the network drops, the
+    // presence state may keep isTyping: true forever — this timer guarantees
+    // the indicator clears even in those edge cases.
+    const timeouts = typingTimeoutsRef.current;
+    for (const userId of typing) {
+      if (timeouts.has(userId)) {
+        clearTimeout(timeouts.get(userId)!);
+      }
+      timeouts.set(
+        userId,
+        setTimeout(() => {
+          timeouts.delete(userId);
+          setTypingUsers((prev) => {
+            if (!prev.has(userId)) return prev;
+            const next = new Set(prev);
+            next.delete(userId);
+            return next;
+          });
+        }, 5000),
+      );
+    }
 
     setTypingUsers((prev) => {
       if (prev.size !== typing.size) return typing;
@@ -81,6 +107,9 @@ export function useChatEvents(chatId: string, user: User | null) {
         clearTimeout(timeoutRef.current);
         timeoutRef.current = null;
       }
+      // Clear all receiver-side typing safety timers
+      typingTimeoutsRef.current.forEach((timer) => clearTimeout(timer));
+      typingTimeoutsRef.current.clear();
     };
   }, [chatId, handlePresenceSync, user?.id]);
 
@@ -88,26 +117,30 @@ export function useChatEvents(chatId: string, user: User | null) {
     if (!channelRef.current) return;
 
     const now = Date.now();
-    
-    // Clear any existing auto-clear timeout
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-      timeoutRef.current = null;
-    }
 
-    // If we're setting typing to false, send immediately and return
+    // If we're setting typing to false, send immediately and clear the timeout
     if (!typing) {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
       channelRef.current.track({ user_id: userIdRef.current, isTyping: false });
       return;
     }
 
-    // Throttle: send typing status every 2.5 seconds
-    if (now - lastSentRef.current < 2500) return;
+    // Throttle: only broadcast the presence update every 2.5 seconds
+    const shouldSend = now - lastSentRef.current >= 2500;
+    if (shouldSend) {
+      channelRef.current.track({ user_id: userIdRef.current, isTyping: true });
+      lastSentRef.current = now;
+    }
 
-    channelRef.current.track({ user_id: userIdRef.current, isTyping: true });
-    lastSentRef.current = now;
-
-    // Auto-clear typing status after 3 seconds of inactivity
+    // ALWAYS (re)schedule the auto-clear timeout, even when throttled.
+    // Otherwise the timeout gets cleared on a throttled call and never
+    // re-scheduled, leaving isTyping: true stuck in presence state forever.
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
     timeoutRef.current = setTimeout(() => {
       if (channelRef.current) {
         channelRef.current.track({ user_id: userIdRef.current, isTyping: false });

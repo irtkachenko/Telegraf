@@ -223,9 +223,12 @@ export async function handleMessageInsert(
   const nakedMessage = payload.new as Message;
 
   const isFromMe = nakedMessage.sender_id === user.id;
-  const needsHydration = !!nakedMessage.reply_to_id && !nakedMessage.reply_to;
+  // The realtime payload does NOT include the joined `sender` (name/image),
+  // so we must hydrate the full message to get the sender's avatar/name.
+  // This fixes missing avatars on new incoming messages.
+  const needsHydration = !isFromMe && !nakedMessage.sender;
 
-  if (!isFromMe && needsHydration) {
+  if (needsHydration) {
     try {
       const fullMessage = await messagesApi.getMessage(nakedMessage.id);
       updateMessageInCache(queryClient, fullMessage);
