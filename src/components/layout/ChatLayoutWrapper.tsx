@@ -53,7 +53,7 @@ export default function ChatLayoutWrapper({ children, sidebar, user }: ChatLayou
   }
 
   return (
-    <div className="flex flex-col min-h-[100dvh]">
+    <div className="flex flex-col min-h-[100svh]">
       <Navbar user={user} onMenuClick={toggleSidebar} />
 
       <div className="flex flex-1 pt-14 relative overflow-hidden">
@@ -81,7 +81,7 @@ export default function ChatLayoutWrapper({ children, sidebar, user }: ChatLayou
             z-[90] 
             transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
             transition-all duration-300 ease-in-out
-            h-[calc(100dvh-56px)] mt-14 lg:mt-0
+            h-[calc(100svh-56px)] mt-14 lg:mt-0
             bg-[#0c0d0f] lg:bg-transparent
             border-r border-white/[0.05]
             ${user ? 'w-80 opacity-100 visible' : 'w-0 opacity-0 invisible overflow-hidden border-none'}

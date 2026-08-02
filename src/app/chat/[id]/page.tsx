@@ -256,7 +256,7 @@ export default function ChatPage() {
   const isTypingNow = otherParticipant && typingUsers.has(otherParticipant.id);
 
   return (
-    <div className="flex flex-col h-[calc(100dvh-56px)] w-full bg-[#08080a] relative overflow-hidden">
+    <div className="flex flex-col h-[calc(100svh-56px)] w-full bg-[#08080a] relative overflow-hidden">
       {isLoaderVisible && (
         <div className="absolute inset-0 z-30 flex items-center justify-center text-gray-400 bg-[#08080a] backdrop-blur-md">
           <div className="flex flex-col items-center gap-2.5">

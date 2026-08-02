@@ -110,32 +110,12 @@ const MessageBubble = memo(
 
         {/* Message Container */}
         <div className={cn('flex flex-col min-w-0 max-w-[75%]', isMe ? 'items-end' : 'items-start')}>
-          {/* Header metadata - Linear style: minimal, compact */}
-          <div className={cn('flex items-center gap-1.5 select-none mb-1', isMe ? 'flex-row-reverse' : 'flex-row')}>
-            {!isMe && (
-              <span className="text-[11px] font-semibold text-gray-400 transition-colors group-hover:text-gray-300">
-                {senderName}
-              </span>
-            )}
-            <span className="text-[10px] font-medium text-gray-600" suppressHydrationWarning>
-              {formattedDate}
+          {/* Sender name - only for other users, above the bubble */}
+          {!isMe && (
+            <span className="text-[11px] font-semibold text-gray-400 transition-colors group-hover:text-gray-300 select-none mb-1">
+              {senderName}
             </span>
-            {isEdited && (
-              <span className="text-[10px] font-medium text-gray-600">(відредаговано)</span>
-            )}
-            {/* Delivery/Read status */}
-            {isMe && (
-              <span className="inline-flex items-center">
-                {message.is_optimistic ? (
-                  <Clock className="w-2.5 h-2.5 text-gray-600" />
-                ) : isRead ? (
-                  <CheckCheck className="w-2.5 h-2.5 text-[#6b7ae0]" />
-                ) : (
-                  <Check className="w-2.5 h-2.5 text-gray-600" />
-                )}
-              </span>
-            )}
-          </div>
+          )}
 
           <ContextMenu>
             <ContextMenuTrigger className="w-full min-w-0 block">
@@ -252,6 +232,33 @@ const MessageBubble = memo(
                         ))}
                       </div>
                     )}
+
+                    {/* Timestamp & Read Receipts - below message content */}
+                    <div
+                      className={cn(
+                        'flex items-center gap-1.5 select-none mt-1.5',
+                        isMe ? 'justify-end' : 'justify-start',
+                      )}
+                    >
+                      <span className="text-[10px] font-medium text-gray-600" suppressHydrationWarning>
+                        {formattedDate}
+                      </span>
+                      {isEdited && (
+                        <span className="text-[10px] font-medium text-gray-600">(відредаговано)</span>
+                      )}
+                      {/* Delivery/Read status */}
+                      {isMe && (
+                        <span className="inline-flex items-center">
+                          {message.is_optimistic ? (
+                            <Clock className="w-2.5 h-2.5 text-gray-600" />
+                          ) : isRead ? (
+                            <CheckCheck className="w-2.5 h-2.5 text-[#6b7ae0]" />
+                          ) : (
+                            <Check className="w-2.5 h-2.5 text-gray-600" />
+                          )}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
