@@ -74,9 +74,12 @@ export default function Home() {
 
       {/* Hero Content - Perfectly Centered */}
       <main className="relative z-40 max-w-4xl mx-auto w-full px-6 flex flex-col items-center justify-center my-auto text-center">
-        {/* Main Title with Cyberpunk/Techno-Sport font */}
-        <h1 className="font-tech text-4xl sm:text-6xl md:text-7xl font-medium tracking-wide text-white leading-none">
-          Просто месенджер<span className="text-[#6366f1]">.</span>
+        {/* Main Title matching latest screenshot */}
+        <h1 className="font-tech text-4xl sm:text-6xl md:text-7xl font-normal tracking-tight leading-none">
+          <span className="text-[#3b82f6] drop-shadow-[0_0_25px_rgba(59,130,246,0.6)] font-medium">Telegraf</span>
+          <span className="text-gray-300 mx-2.5 sm:mx-3.5">—</span>
+          <span className="text-white">просто месенджер</span>
+          <span className="text-[#3b82f6]">.</span>
         </h1>
 
         {/* Action Button matching screenshot */}
