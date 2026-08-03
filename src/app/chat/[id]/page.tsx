@@ -85,15 +85,25 @@ export default function ChatPage() {
 
       pinToBottomUntilRef.current = Date.now() + holdMs;
 
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          if (!virtuosoRef.current || messages.length === 0) return;
-          virtuosoRef.current.scrollToIndex({
-            index: messages.length - 1,
-            align: 'end',
-            behavior,
-          });
+      const doScroll = () => {
+        if (!virtuosoRef.current || messages.length === 0) return;
+        virtuosoRef.current.scrollToIndex({
+          index: messages.length - 1,
+          align: 'end',
+          behavior,
         });
+      };
+
+      // Double rAF ensures the list has rendered before scrolling.
+      requestAnimationFrame(() => {
+        requestAnimationFrame(doScroll);
+      });
+
+      // Fallback: retry at multiple intervals to handle mobile layout settling
+      // (images loading, URL bar collapse, keyboard animation, etc.) which can
+      // shift content height after the initial render.
+      [150, 350, 700].forEach((delay) => {
+        setTimeout(doScroll, delay);
       });
     },
     [messages.length],
@@ -315,11 +325,12 @@ export default function ChatPage() {
           </div>
         ) : messages.length > 0 ? (
           <Virtuoso
+            key={id}
             ref={virtuosoRef}
             data={messages}
             computeItemKey={(_index, message) => message.client_id || message.id}
             initialTopMostItemIndex={{ index: 'LAST', align: 'end' }}
-            followOutput={false}
+            followOutput="smooth"
             alignToBottom
             atBottomThreshold={80}
             overscan={40}
