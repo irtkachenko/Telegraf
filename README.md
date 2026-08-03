@@ -1,178 +1,196 @@
-﻿# Telegraf
+# 💬 Telegraf — Realtime 1:1 Messenger
 
-## 1. What This Project Is
+![Next.js](https://img.shields.io/badge/Next.js_16-black?style=for-the-badge&logo=nextdotjs)
+![React](https://img.shields.io/badge/React_19-61DAFB?style=for-the-badge&logo=react&logoColor=black)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
+![Supabase](https://img.shields.io/badge/Supabase-3ECF8E?style=for-the-badge&logo=supabase&logoColor=white)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind_v4-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white)
+![Vercel](https://img.shields.io/badge/Deployed_on-Vercel-black?style=for-the-badge&logo=vercel)
 
-Telegraf is a realtime 1:1 messaging web application built on Next.js App Router and Supabase.
+Telegraf is a high-performance, real-time 1:1 web messaging application built with **Next.js (App Router)** and **Supabase**. It features instant message delivery, real-time presence, typing indicators, client-side image compression, and secure private attachment storage.
 
-**Try it live:** [https://telegraf-navy.vercel.app/](https://telegraf-navy.vercel.app/)
+🔗 **Live Demo:** [https://telegraf-navy.vercel.app/](https://telegraf-navy.vercel.app/)
 
-__Telegraf (Realtime Chat)__
+---
 
-- __Стек:__ TypeScript, Next.js (App Router), React, Node.js, Supabase (Postgres, Auth, Storage, Realtime), Tailwind CSS v4, TanStack Query, Zustand, Radix UI, Framer Motion, Vercel.
-- __Результат:__ Розробив вебчат із миттєвим обміном повідомленнями, realtime typing indicators та online presence. Спроектував PostgreSQL базу даних на Supabase з RLS-політиками, rate limiting та тригерами. Налаштував приватний storage bucket із Signed URLs для медіафайлів. Інтегрував Google OAuth через Supabase Auth. Реалізував клієнтське кешування (TanStack Query + Zustand), віртуалізований список повідомлень (react-virtuoso) та компресію зображень на клієнті. Задеплоїв на Vercel.
+## 📸 Preview
 
-Core capabilities:
-- Google OAuth login via Supabase Auth
-- Chat list + chat detail with realtime message updates
-- Message create/edit/delete + read markers
-- Typing indicator + online presence
-- File attachments via Supabase Storage (private bucket + signed URLs)
+<!-- Replace with your actual app screenshot or GIF -->
+![Telegraf Banner](https://raw.githubusercontent.com/username/repository/main/public/preview.png)
 
-## 2. High-Level Architecture
+---
 
-Client layers:
-1. `components/` -> view/UI and user interaction
-2. `hooks/` -> app workflows (queries, mutations, realtime orchestration)
-3. `services/` -> thin API access layer over Supabase client
-4. `store/` -> global client state (presence/storage caches)
+## 🌟 Key Features & Highlights
 
-Server/infra layers:
-1. Next.js route handlers (`src/app/api/...`) for server-side config endpoints
-2. Supabase SQL migrations in `supabase/migrations/`
-3. Supabase RPC + RLS policies enforcing DB-side access logic
+- 🔐 **Authentication:** Google OAuth powered by Supabase Auth with server-side proxy route protection.
+- ⚡ **Realtime Messaging:** Instant message creation, editing, deletion, and read receipts with minimal latency.
+- 🟢 **Presence & Typing:** Realtime online/offline presence indicators and active typing feedback.
+- 📎 **Media & Attachments:** Private Supabase Storage bucket with client-side image compression (`browser-image-compression`) and secure Signed URLs.
+- 🚀 **Performance:** Virtualized message list using `react-virtuoso` for smooth handling of extensive chat histories.
+- 🔒 **Database Security:** Custom PostgreSQL schema with Row Level Security (RLS) policies, rate limiting, and database triggers.
 
-Routing model:
-- `src/proxy.ts` acts as middleware/proxy gate for auth-based redirects
-- Public routes: `/`, `/auth/*`
-- Protected routes: `/chat`, `/chat/[id]`
+---
 
-## 3. Request/State Flows
+## 🛠️ Tech Stack
 
-Auth flow:
-1. User clicks sign-in (`handleSignIn`)
-2. Supabase OAuth redirect
-3. `/auth/callback` exchanges auth code for session
-4. Proxy redirects authenticated users to `/chat`
+| Category | Technology |
+|---|---|
+| **Framework & UI** | Next.js 16 (App Router), React 19, Tailwind CSS v4, Radix UI, Framer Motion |
+| **Backend & DB** | Supabase (PostgreSQL, Auth, Storage, Realtime Engine) |
+| **State & Data Fetching** | TanStack Query v5, Zustand |
+| **Form & Validation** | Zod |
+| **Virtualization & Media** | react-virtuoso, browser-image-compression, linkify-react |
+| **Tooling & Quality** | Biome, ESLint, TypeScript 5, Docker |
 
-Chat/messages flow:
-1. Hooks read via `services/chat/*`
-2. Data cached by React Query (`['chats']`, `['chat', id]`, `['messages', id]`)
-3. Realtime channel (`useChatsRealtime`) patches caches on INSERT/UPDATE/DELETE
+---
 
-Presence flow:
-1. `useGlobalRealtime` subscribes once user is authenticated
-2. `usePresenceStore` maintains singleton realtime presence channel
-3. Heartbeat and reconnect strategy handle transient disconnects
+## 🏗️ High-Level Architecture
 
-Attachment flow:
-1. Client validates files (`useStorageLimits`)
-2. Files uploaded to private `attachments` bucket
-3. Signed URLs are generated and cached in Zustand store
-4. Message stores attachment metadata in `messages.attachments`
+### Client Layer Architecture
+1. `components/` — UI presentation layers and interactive elements.
+2. `hooks/` — Application workflows, TanStack queries, mutations, and realtime channel listeners.
+3. `services/` — Thin data-access layer interacting with the Supabase client.
+4. `store/` — Zustand global client state (presence cache, storage limits).
 
-## 4. Directory Guide
+### Server & Infrastructure Layer
+1. **Route Handlers** (`src/app/api/...`) for server-side config and proxy gate routing (`src/proxy.ts`).
+2. **Supabase Database** migrations in `supabase/migrations/` containing RLS policies, functions, and triggers.
 
-- `src/app/` -> App Router pages and route handlers
-- `src/components/` -> UI components by feature
-- `src/hooks/` -> data/realtime/business hooks
-- `src/services/` -> Supabase calls grouped by domain
-- `src/lib/` -> shared utilities and adapters
-- `src/store/` -> Zustand stores
-- `src/types/` -> app and generated DB types
-- `src/config/` -> static configuration files
-- `src/shared/` -> shared error handling and utilities
-- `src/utils/` -> file validation utilities
-- `supabase/migrations/` -> schema, policies, RPCs, rate limits
-- `scripts/` -> helper scripts for DB migrations and type generation
-- `docs/` -> additional design/implementation notes
+### Routing Model
+- **Public Routes:** `/`, `/auth/*`
+- **Protected Routes:** `/chat`, `/chat/[id]` (guarded via `src/proxy.ts`)
 
-## 5. Environment Variables
+---
 
-Copy `.env.example` to `.env.local` and set at minimum:
+## 🔄 State & Data Flows
+
+<details>
+<summary><b>1. Authentication Flow</b></summary>
+
+1. User triggers Google OAuth sign-in.
+2. Supabase redirects through OAuth provider.
+3. `/auth/callback` exchanges the auth code for a session token.
+4. Middleware proxy gates redirect authenticated users to `/chat`.
+</details>
+
+<details>
+<summary><b>2. Realtime Chat & Messages Flow</b></summary>
+
+1. Hooks fetch data via `services/chat/*`.
+2. Cache managed by React Query (`['chats']`, `['chat', id]`, `['messages', id]`).
+3. `useChatsRealtime` channel listens to DB events (`INSERT`/`UPDATE`/`DELETE`) and dynamically updates caches.
+</details>
+
+<details>
+<summary><b>3. Attachments & Media Flow</b></summary>
+
+1. Client validates file limits (`useStorageLimits`).
+2. Files compressed on client side and uploaded to private `attachments` bucket.
+3. Temporary Signed URLs are generated and stored in the Zustand store cache.
+4. Attachment metadata is saved alongside the message payload.
+</details>
+
+---
+
+## 📁 Directory Structure
+
+```text
+Telegraf/
+├── docs/                 # Architectural and design documentation
+├── scripts/              # DB migration and type generator scripts
+├── src/
+│   ├── app/              # Next.js App Router (pages & API routes)
+│   ├── components/       # UI components grouped by feature
+│   ├── config/           # App configuration files
+│   ├── hooks/            # Custom hooks for state, RPC, and realtime
+│   ├── lib/              # Utility adapters and shared libs
+│   ├── services/         # Supabase API services
+│   ├── shared/           # Cross-cutting error handlers and helpers
+│   ├── store/            # Zustand state management
+│   ├── types/            # Generated DB schema and app types
+│   └── utils/            # Validation & formatting utilities
+└── supabase/
+    └── migrations/       # PostgreSQL schema, RLS policies & RPCs
+```
+
+---
+
+## 🚀 Getting Started
+
+### 1. Prerequisites
+- **Node.js**: `>= 22.0.0`
+- **npm**: `>= 10.0.0`
+
+### 2. Environment Setup
+Copy `.env.example` to `.env.local`:
+
+```bash
+cp .env.example .env.local
+```
+
+Fill in your configuration:
 
 ```env
 NEXT_PUBLIC_SITE_URL=http://localhost:3000
 NEXT_PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon-key>
+NEXT_PUBLIC_SUPABASE_ANON_KEY=<your-anon-key>
+
+# Server-only (Do NOT expose to client)
+SUPABASE_SERVICE_ROLE_KEY=<your-service-role-key>
 ```
 
-Optional (server-only):
-
-```env
-SUPABASE_SERVICE_ROLE_KEY=<service-role-key>
-```
-
-Notes:
-- Never expose `SUPABASE_SERVICE_ROLE_KEY` to the client.
-- `NEXT_PUBLIC_*` variables are bundled for browser runtime.
-
-## 6. Local Development
-
-Install dependencies:
+### 3. Installation & Run
 
 ```bash
+# Install dependencies
 npm install
-```
 
-Run dev server:
-
-```bash
+# Run development server
 npm run dev
-```
 
-Build production bundle:
-
-```bash
+# Build for production
 npm run build
 npm run start
 ```
 
-## 7. Package Scripts
+---
 
-- `npm run dev` -> Next dev server (with webpack)
-- `npm run build` -> production build
-- `npm run start` -> run production server
-- `npm run lint` -> ESLint for `src`
-- `npm run format` -> format `src` via Biome
-- `npm run check` -> Biome check (with write) + ESLint
-- `npm run generate-types` -> regenerate `src/types/supabase.ts`
-- `npm run push-migrations` -> link Supabase project + push migrations
-- `npm run verify` -> lint + typecheck + production build
+## 📜 Available Scripts
 
-## 8. Database Workflow
+| Script | Command / Description |
+|---|---|
+| `npm run dev` | Starts Next.js dev server with Webpack |
+| `npm run build` | Builds production bundle |
+| `npm run verify` | Runs linting, TypeScript typecheck (`tsc`), and production build |
+| `npm run format` | Formats codebase using Biome |
+| `npm run check` | Runs Biome checks and ESLint |
+| `npm run generate-types` | Regenerates Supabase TypeScript types in `src/types/supabase.ts` |
+| `npm run push-migrations` | Links Supabase project and applies DB migrations |
 
-Migrations:
-- SQL files are in `supabase/migrations/`.
-- Apply with `npm run push-migrations`.
+---
 
-Type generation:
-- `npm run generate-types` writes generated schema types to `src/types/supabase.ts`.
-- Run this after schema/RPC changes.
+## 🐳 Docker Support
 
-## 9. Quality and Validation Commands
-
-Recommended before merge:
+<details>
+<summary><b>Development Stack</b></summary>
 
 ```bash
-npm run lint
-npx tsc --noEmit
-npm run build
-npm audit --prod
-```
-
-## 10. Docker
-
-Development (hot reload):
-
-```bash
+# Start dev container (with hot reload)
 docker-compose up -d --build
-```
 
-Stop dev stack:
-
-```bash
+# Stop dev container
 docker-compose down
 ```
+</details>
 
-Production-like local run:
+<details>
+<summary><b>Production Stack</b></summary>
 
 ```bash
+# Start production-like container
 docker compose -f docker-compose.prod.yml up -d --build
-```
 
-Stop prod stack:
-
-```bash
+# Stop production container
 docker compose -f docker-compose.prod.yml down
 ```
-
+</details>
