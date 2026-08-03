@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Geist, Geist_Mono } from 'next/font/google';
+import { Geist, Geist_Mono, Tektur, Chakra_Petch } from 'next/font/google';
 import AuthProvider from '@/components/auth/AuthProvider';
 import ChatLayoutWrapper from '@/components/layout/ChatLayoutWrapper';
 import GlobalCleanup from '@/components/layout/GlobalCleanup';
@@ -15,6 +15,17 @@ const geistSans = Geist({
 
 const geistMono = Geist_Mono({
   variable: '--font-geist-mono',
+  subsets: ['latin'],
+});
+
+const tektur = Tektur({
+  variable: '--font-tektur',
+  subsets: ['latin', 'cyrillic'],
+});
+
+const chakraPetch = Chakra_Petch({
+  weight: ['400', '500', '600', '700'],
+  variable: '--font-chakra',
   subsets: ['latin'],
 });
 
@@ -39,7 +50,7 @@ export default async function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-black text-white`}
+        className={`${geistSans.variable} ${geistMono.variable} ${tektur.variable} ${chakraPetch.variable} antialiased bg-black text-white`}
         suppressHydrationWarning
       >
         <Providers>

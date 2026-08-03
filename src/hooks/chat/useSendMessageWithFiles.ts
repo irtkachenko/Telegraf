@@ -12,6 +12,7 @@ import {
   messagesApi,
   storageApi,
   uploadFileOptimized,
+  uploadEncryptedFileOptimized,
 } from '@/services';
 import { handleError } from '@/shared/lib/error-handler';
 import { AuthError, NetworkError, ValidationError } from '@/shared/lib/errors';
@@ -154,7 +155,6 @@ export function useSendMessageWithFiles(
       const uploadResults = await Promise.allSettled(
         files.map((file) => {
           if (shouldEncrypt) {
-            const { uploadEncryptedFileOptimized } = require('@/services');
             return uploadEncryptedFileOptimized(file, chatId, user.id, sharedSecret!);
           }
           return uploadFileOptimized(file, chatId, user.id);
