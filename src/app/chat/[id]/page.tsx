@@ -438,6 +438,7 @@ export default function ChatPage() {
           <ChatInput
             chatId={id}
             recipientId={otherParticipant?.id}
+            otherParticipantName={otherParticipant?.name || undefined}
             setTyping={setTyping}
             replyToId={replyingTo?.id}
             onReplyCancel={() => setReplyingTo(null)}

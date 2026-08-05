@@ -25,6 +25,7 @@ interface ChatInputProps {
   onEditCancel?: () => void;
   onMessageSent?: () => void;
   recipientId?: string;
+  otherParticipantName?: string;
 }
 
 export default function ChatInput({
@@ -36,6 +37,7 @@ export default function ChatInput({
   onEditCancel,
   onMessageSent,
   recipientId,
+  otherParticipantName,
 }: ChatInputProps) {
   const [content, setContent] = useState('');
   const { user } = useSupabaseAuth();
@@ -178,7 +180,7 @@ export default function ChatInput({
         onReplyCancel={onReplyCancel}
         editingMessage={editingMessage || null}
         onEditCancel={onEditCancel}
-        otherParticipantName="Співрозмовник"
+        otherParticipantName={otherParticipantName}
         currentUserId={user?.id}
       />
 
