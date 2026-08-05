@@ -4,17 +4,24 @@ import type { RealtimeChannel, User } from '@supabase/supabase-js';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { realtimeApi } from '@/services/realtime/realtime.service';
 
-interface PresenceState {
-  [key: string]: {
-    user_id: string;
-    isTyping: boolean;
-    online_at: string;
-  }[];
-}
+// Час між broadcast-повідомленнями "друкую..." (тротлінг).
+const TYPING_THROTTLE_MS = 1000;
+
+// Сторона відправника: якщо користувач перестав друкувати, але setTyping(false)
+// не викликався, надіслати "не друкує" через цей час.
+const TYPING_AUTO_CLEAR_MS = 2000;
+
+// Сторона отримувача: страхувальний таймер, який примусово ховає індикатор,
+// якщо нових "друкую..." не надходило протягом цього часу.
+const TYPING_STALE_MS = 8000;
 
 /**
- * Хук для подій чату (typing indicator) через Presence.
- * Підписка на повідомлення тепер відбувається глобально в useChatsRealtime.
+ * Хук для подій чату (typing indicator) через Broadcast.
+ *
+ * Broadcast — миттєвий fire-and-forget механізм: повідомлення летить усім
+ * підписникам каналу одразу, без проміжного збереження стану на сервері.
+ * На відміну від Presence (sync через сервер), це прибирає помітну затримку
+ * появи/зникнення індикатора.
  */
 export function useChatEvents(chatId: string, user: User | null) {
   const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
@@ -31,64 +38,75 @@ export function useChatEvents(chatId: string, user: User | null) {
     userIdRef.current = user?.id || null;
   }, [user?.id]);
 
-  const handlePresenceSync = useCallback(() => {
-    if (!channelRef.current) return;
-    const state = channelRef.current.presenceState();
-    const typing = new Set<string>();
+  const handleTypingBroadcast = useCallback((payload: { payload: Record<string, unknown> }) => {
+    const rawUserId = payload.payload?.['user_id'];
+    const senderId = typeof rawUserId === 'string' ? rawUserId : null;
+    if (!senderId || senderId === userIdRef.current) return;
 
-    Object.values(state as unknown as PresenceState).forEach((presences) => {
-      presences.forEach((p) => {
-        if (p.isTyping && p.user_id !== userIdRef.current) {
-          typing.add(p.user_id);
-        }
-      });
-    });
-
-    // Receiver-side safety net: schedule a force-clear for each user that is
-    // currently typing. If the sender's tab crashes or the network drops, the
-    // presence state may keep isTyping: true forever — this timer guarantees
-    // the indicator clears even in those edge cases.
+    const isTyping = payload.payload?.['isTyping'] === true;
     const timeouts = typingTimeoutsRef.current;
-    for (const userId of typing) {
-      if (timeouts.has(userId)) {
-        clearTimeout(timeouts.get(userId)!);
+
+    if (isTyping) {
+      // Додаємо користувача в набір тих, хто друкує.
+      setTypingUsers((prev) => {
+        if (prev.has(senderId)) return prev;
+        const next = new Set(prev);
+        next.add(senderId);
+        return next;
+      });
+
+      // Скидаємо/створюємо страхувальний таймер.
+      const existing = timeouts.get(senderId);
+      if (existing) {
+        clearTimeout(existing);
       }
       timeouts.set(
-        userId,
+        senderId,
         setTimeout(() => {
-          timeouts.delete(userId);
+          timeouts.delete(senderId);
           setTypingUsers((prev) => {
-            if (!prev.has(userId)) return prev;
+            if (!prev.has(senderId)) return prev;
             const next = new Set(prev);
-            next.delete(userId);
+            next.delete(senderId);
             return next;
           });
-        }, 5000),
+        }, TYPING_STALE_MS),
       );
-    }
-
-    setTypingUsers((prev) => {
-      if (prev.size !== typing.size) return typing;
-      for (const id of typing) {
-        if (!prev.has(id)) return typing;
+    } else {
+      // Користувач зупинився — прибираємо одразу та скасовуємо таймер.
+      setTypingUsers((prev) => {
+        if (!prev.has(senderId)) return prev;
+        const next = new Set(prev);
+        next.delete(senderId);
+        return next;
+      });
+      const timer = timeouts.get(senderId);
+      if (timer) {
+        clearTimeout(timer);
+        timeouts.delete(senderId);
       }
-      return prev;
-    });
+    }
   }, []);
 
   useEffect(() => {
     if (!(chatId && user?.id)) return;
 
-    // РЎС‚РІРѕСЂСЋС”РјРѕ РєР°РЅР°Р» РґР»СЏ РїСЂРёСЃСѓС‚РЅРѕСЃС‚С– РІ РєРѕРЅРєСЂРµС‚РЅРѕРјСѓ С‡Р°С‚С–
+    // Копіюємо поточний Map у локальну змінну, щоб cleanup використовував
+    // стабільне посилання (рекомендація react-hooks/exhaustive-deps).
+    const typingTimeouts = typingTimeoutsRef.current;
+
+    // Створюємо канал для конкретного чату.
     const channel = realtimeApi.createChatChannel(chatId);
     channelRef.current = channel;
 
-    // Listen for typing (presence)
-    channel.on('presence', { event: 'sync' }, handlePresenceSync);
+    // Слухаємо broadcast-"typing" події.
+    realtimeApi.subscribeToTyping(channel, handleTypingBroadcast);
 
     channel.subscribe((status: string) => {
-      if (status === 'SUBSCRIBED') {
-        channel.track({ user_id: userIdRef.current, isTyping: false });
+      // Для broadcast не потрібен початковий стан (на відміну від presence),
+      // тому окремих дій при SUBSCRIBED не виконуємо.
+      if (process.env.NODE_ENV === 'development' && status === 'CHANNEL_ERROR') {
+        console.warn('Chat events channel error for chat:', chatId);
       }
     });
 
@@ -108,45 +126,56 @@ export function useChatEvents(chatId: string, user: User | null) {
         timeoutRef.current = null;
       }
       // Clear all receiver-side typing safety timers
-      typingTimeoutsRef.current.forEach((timer) => clearTimeout(timer));
-      typingTimeoutsRef.current.clear();
+      typingTimeouts.forEach((timer) => clearTimeout(timer));
+      typingTimeouts.clear();
     };
-  }, [chatId, handlePresenceSync, user?.id]);
+  }, [chatId, handleTypingBroadcast, user?.id]);
 
   const setTyping = useCallback((typing: boolean) => {
-    if (!channelRef.current) return;
+    const channel = channelRef.current;
+    const currentUserId = userIdRef.current;
+    if (!channel || !currentUserId) return;
 
-    const now = Date.now();
+    const send = (value: boolean) => {
+      void realtimeApi.broadcast(channel, 'typing', {
+        user_id: currentUserId,
+        isTyping: value,
+      });
+    };
 
-    // If we're setting typing to false, send immediately and clear the timeout
+    // Зупинка друку — надсилаємо миттєво, без тротлінгу.
     if (!typing) {
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
         timeoutRef.current = null;
       }
-      channelRef.current.track({ user_id: userIdRef.current, isTyping: false });
+      send(false);
       return;
     }
 
-    // Throttle: only broadcast the presence update every 2.5 seconds
-    const shouldSend = now - lastSentRef.current >= 2500;
+    // Тротлінг: "друкую..." надсилаємо не частіше ніж раз на TYPING_THROTTLE_MS.
+    const now = Date.now();
+    const shouldSend = now - lastSentRef.current >= TYPING_THROTTLE_MS;
     if (shouldSend) {
-      channelRef.current.track({ user_id: userIdRef.current, isTyping: true });
+      send(true);
       lastSentRef.current = now;
     }
 
-    // ALWAYS (re)schedule the auto-clear timeout, even when throttled.
-    // Otherwise the timeout gets cleared on a throttled call and never
-    // re-scheduled, leaving isTyping: true stuck in presence state forever.
+    // Страхувальний таймер на стороні відправника: якщо користувач перестав
+    // друкувати і компонент не викликав setTyping(false), отримувач все одно
+    // отримає "не друкує" через TYPING_AUTO_CLEAR_MS.
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
     }
     timeoutRef.current = setTimeout(() => {
-      if (channelRef.current) {
-        channelRef.current.track({ user_id: userIdRef.current, isTyping: false });
+      if (channelRef.current && userIdRef.current) {
+        void realtimeApi.broadcast(channelRef.current, 'typing', {
+          user_id: userIdRef.current,
+          isTyping: false,
+        });
       }
       timeoutRef.current = null;
-    }, 3000);
+    }, TYPING_AUTO_CLEAR_MS);
   }, []);
 
   return { typingUsers, setTyping };

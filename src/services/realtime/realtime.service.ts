@@ -22,7 +22,9 @@ export const realtimeApi = {
    * Create a specific chat channel
    */
   createChatChannel: (chatId: string): RealtimeChannel => {
-    return supabase.channel(`chat:${chatId}`);
+    return supabase.channel(`chat:${chatId}`, {
+      config: { broadcast: { self: false } },
+    });
   },
 
   /**
