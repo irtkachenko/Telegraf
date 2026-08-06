@@ -107,7 +107,9 @@ async function updateLastSeen(): Promise<void> {
 }
 
 function handleVisibilityChange(): void {
-  if (document.visibilityState === 'hidden') {
+  if (document.visibilityState === 'visible') {
+    handleUserActivity();
+  } else {
     void updateLastSeen();
   }
 }
@@ -118,6 +120,43 @@ function handleBeforeUnload(): void {
 
 function handlePageHide(): void {
   void updateLastSeen();
+}
+
+function handleUserActivity(): void {
+  const manager = presenceSingleton.manager;
+  if (!manager || !manager.channel || !manager.userId) return;
+
+  const wasInactive = Date.now() - manager.lastActivity >= INACTIVITY_TIMEOUT;
+  updateActivity(manager);
+
+  if (wasInactive && !manager.heartbeatInterval) {
+    startHeartbeat(manager);
+    manager.channel.track({
+      user_id: manager.userId,
+      online_at: new Date().toISOString(),
+    });
+  }
+}
+
+function handleBlur(): void {
+  // On blur we intentionally do nothing; presence should remain online
+  // until the user is inactive for INACTIVITY_TIMEOUT.
+}
+
+function handleFocus(): void {
+  const manager = presenceSingleton.manager;
+  if (!manager || !manager.channel || !manager.userId) return;
+
+  const wasInactive = Date.now() - manager.lastActivity >= INACTIVITY_TIMEOUT;
+  updateActivity(manager);
+
+  if (wasInactive && !manager.heartbeatInterval) {
+    startHeartbeat(manager);
+    manager.channel.track({
+      user_id: manager.userId,
+      online_at: new Date().toISOString(),
+    });
+  }
 }
 
 function updateActivity(manager: PresenceManager): void {
@@ -148,12 +187,21 @@ function startHeartbeat(manager: PresenceManager): void {
   }
   manager.heartbeatInterval = setInterval(() => {
     if (manager.channel && manager.userId) {
-      updateActivity(manager);
+      const timeSinceActivity = Date.now() - manager.lastActivity;
+
+      // If inactive for too long, untrack and stop heartbeat
+      if (timeSinceActivity >= INACTIVITY_TIMEOUT) {
+        stopHeartbeat(manager);
+        manager.channel.untrack();
+        void updateLastSeen();
+        return;
+      }
+
       manager.channel.track({
         user_id: manager.userId,
         online_at: new Date().toISOString(),
       });
-      
+
       // Periodically update last_seen so the "last seen" time shows
       // when the user was last active, not just when they left the page.
       void updateLastSeen();
@@ -312,6 +360,10 @@ function getOrCreateManager(
   window.addEventListener('visibilitychange', handleVisibilityChange);
   window.addEventListener('beforeunload', handleBeforeUnload);
   window.addEventListener('pagehide', handlePageHide);
+  window.addEventListener('blur', handleBlur);
+  window.addEventListener('focus', handleFocus);
+  window.addEventListener('mousemove', handleUserActivity, { passive: true });
+  window.addEventListener('keydown', handleUserActivity, { passive: true });
 
   return manager;
 }
@@ -391,6 +443,10 @@ function cleanupPresence(): void {
   window.removeEventListener('visibilitychange', handleVisibilityChange);
   window.removeEventListener('beforeunload', handleBeforeUnload);
   window.removeEventListener('pagehide', handlePageHide);
+  window.removeEventListener('blur', handleBlur);
+  window.removeEventListener('focus', handleFocus);
+  window.removeEventListener('mousemove', handleUserActivity);
+  window.removeEventListener('keydown', handleUserActivity);
 
   // Reset global state
   presenceSingleton.manager = null;
