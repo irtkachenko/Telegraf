@@ -2,7 +2,7 @@
 
 :root {
   /* Linear-style dark theme by default */
-  --background: red; /* #08080a */
+  --background: #08080a; 
   --foreground: #f7f8f8;
 
   /* Premium Design Tokens */
