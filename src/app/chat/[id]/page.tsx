@@ -266,7 +266,7 @@ export default function ChatPage() {
   const isTypingNow = otherParticipant && typingUsers.has(otherParticipant.id);
 
   return (
-    <div className="flex flex-col h-[calc(100svh-56px)] w-full bg-[#08080a] relative overflow-hidden">
+    <div className="flex flex-col h-[100dvh] w-full bg-[#08080a] relative overflow-hidden">
       {isLoaderVisible && (
         <div className="absolute inset-0 z-30 flex items-center justify-center text-gray-400 bg-[#08080a] backdrop-blur-md">
           <div className="flex flex-col items-center gap-2.5">
@@ -275,9 +275,9 @@ export default function ChatPage() {
           </div>
         </div>
       )}
-      {/* Header */}
+      {/* Header - sticky to stay visible when keyboard opens */}
       <div
-        className="px-4.5 py-2.5 border-b border-white/[0.05] flex items-center justify-between backdrop-blur-md bg-[#0c0d0f]/50 sticky top-0 z-20"
+        className="px-4.5 py-2.5 border-b border-white/[0.05] flex items-center justify-between backdrop-blur-md bg-[#0c0d0f]/50 sticky top-0 z-20 shrink-0"
         style={{ opacity: isLoaderVisible ? 0 : 1 }}
       >
         <div className="flex items-center gap-3">
@@ -311,7 +311,7 @@ export default function ChatPage() {
         </div>
       </div>
 
-      {/* Messages Area */}
+      {/* Messages Area - flex-1 ensures it takes remaining space */}
       <div className="flex-1 relative min-h-0" style={{ opacity: isLoaderVisible ? 0 : 1 }}>
         {messages.length === 0 && !isMessagesLoading ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-4">
@@ -432,8 +432,8 @@ export default function ChatPage() {
         </AnimatePresence>
       </div>
 
-      {/* Input Section */}
-      <div className="w-full border-t border-white/[0.05] bg-[#0c0d0f]/50 backdrop-blur-md z-20">
+      {/* Input Section - shrink-0 prevents it from being compressed */}
+      <div className="w-full border-t border-white/[0.05] bg-[#0c0d0f]/50 backdrop-blur-md z-20 shrink-0">
         <div className="max-w-5xl mx-auto px-2 sm:px-6 py-2 sm:py-3.5">
           <ChatInput
             chatId={id}

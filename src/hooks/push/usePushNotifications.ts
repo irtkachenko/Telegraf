@@ -134,11 +134,8 @@ export function usePushNotifications() {
 
       if (!isStandalonePwa || !pushSupported) return false;
 
-      if (Notification.permission === 'denied') {
-        return false;
-      }
-
-      if (Notification.permission === 'default') {
+      // Request permission even if previously denied - browser will show prompt again
+      if (Notification.permission === 'default' || Notification.permission === 'denied') {
         const permission = await Notification.requestPermission();
         if (permission !== 'granted') {
           return false;
