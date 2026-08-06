@@ -63,7 +63,7 @@ export default async function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} ${tektur.variable} ${chakraPetch.variable} antialiased bg-red-600 text-white`}
+        className={`${geistSans.variable} ${geistMono.variable} ${tektur.variable} ${chakraPetch.variable} antialiased bg-black text-white font-tektur`}
         suppressHydrationWarning
       >
         <PwaRegister />
