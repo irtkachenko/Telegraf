@@ -586,8 +586,8 @@ BEGIN
     );
     
     -- Call Edge Function asynchronously (don't block the transaction)
-    -- Using pg_net to make HTTP request
-    PERFORM extensions.net.http_post(
+    -- Using net.http_post (pg_net extension) - NOT extensions.net.http_post
+    PERFORM net.http_post(
       url := current_setting('app.supabase_url', true) || '/functions/v1/send-push-notification',
       headers := jsonb_build_object(
         'Content-Type', 'application/json',
