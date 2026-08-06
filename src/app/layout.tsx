@@ -5,6 +5,7 @@ import ChatLayoutWrapper from '@/components/layout/ChatLayoutWrapper';
 import GlobalCleanup from '@/components/layout/GlobalCleanup';
 import PwaRegister from '@/components/layout/PwaRegister';
 import Providers from '@/components/Providers';
+import UpdateChecker from '@/components/UpdateChecker';
 import Sidebar from '@/components/sidebar/Sidebar';
 import { createClient } from '@/lib/supabase/server';
 import './globals.css';
@@ -66,30 +67,32 @@ export default async function RootLayout({
         suppressHydrationWarning
       >
         <PwaRegister />
-        <Providers>
-          <AuthProvider>
-            <GlobalCleanup>
-              <ChatLayoutWrapper
-                user={
-                  user
-                    ? {
-                        id: user.id,
-                        email: user.email,
-                        name:
-                          user.user_metadata.full_name ||
-                          user.user_metadata.name ||
-                          user.email?.split('@')[0],
-                        image: user.user_metadata.avatar_url || user.user_metadata.picture,
-                      }
-                    : null
-                }
-                sidebar={user ? <Sidebar /> : null}
-              >
-                {children}
-              </ChatLayoutWrapper>
-            </GlobalCleanup>
-          </AuthProvider>
-        </Providers>
+        <UpdateChecker>
+          <Providers>
+            <AuthProvider>
+              <GlobalCleanup>
+                <ChatLayoutWrapper
+                  user={
+                    user
+                      ? {
+                          id: user.id,
+                          email: user.email,
+                          name:
+                            user.user_metadata.full_name ||
+                            user.user_metadata.name ||
+                            user.email?.split('@')[0],
+                          image: user.user_metadata.avatar_url || user.user_metadata.picture,
+                        }
+                      : null
+                  }
+                  sidebar={user ? <Sidebar /> : null}
+                >
+                  {children}
+                </ChatLayoutWrapper>
+              </GlobalCleanup>
+            </AuthProvider>
+          </Providers>
+        </UpdateChecker>
       </body>
     </html>
   );
