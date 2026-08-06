@@ -3,13 +3,27 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect } from 'react';
 import { useSupabaseAuth } from '@/components/auth/AuthProvider';
+import { isStandaloneMode } from '@/hooks/pwa/usePwaInstall';
 import { pushApi, type PushSubscriptionPayload } from '@/services/push/push.service';
 
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+let didWarnMissingVapidKey = false;
+
+function hasPushConfig(): boolean {
+  if (VAPID_PUBLIC_KEY) return true;
+
+  if (!didWarnMissingVapidKey && typeof window !== 'undefined') {
+    console.warn('NEXT_PUBLIC_VAPID_PUBLIC_KEY is not set. Push notifications are disabled.');
+    didWarnMissingVapidKey = true;
+  }
+
+  return false;
+}
 
 function isPushSupported(): boolean {
   return (
     typeof window !== 'undefined' &&
+    hasPushConfig() &&
     'PushManager' in window &&
     'serviceWorker' in navigator &&
     'Notification' in window
@@ -45,7 +59,8 @@ async function createBrowserSubscription(
   }
 
   if (!VAPID_PUBLIC_KEY) {
-    throw new Error('NEXT_PUBLIC_VAPID_PUBLIC_KEY is not set');
+    console.warn('NEXT_PUBLIC_VAPID_PUBLIC_KEY is not set. Push notifications are disabled.');
+    return null;
   }
 
   const subscription = await registration.pushManager.subscribe({
@@ -66,6 +81,8 @@ async function createBrowserSubscription(
 export function usePushNotifications() {
   const { user } = useSupabaseAuth();
   const queryClient = useQueryClient();
+  const isStandalonePwa = typeof window !== 'undefined' && isStandaloneMode();
+  const pushSupported = isPushSupported();
 
   const {
     data: isSubscribed,
@@ -75,7 +92,7 @@ export function usePushNotifications() {
     queryFn: async () => {
       if (!user) return false;
 
-      if (!isPushSupported()) return false;
+      if (!isStandalonePwa || !pushSupported) return false;
 
       if (Notification.permission !== 'granted') return false;
 
@@ -87,24 +104,25 @@ export function usePushNotifications() {
       // Check if there's an active server-side subscription too.
       return pushApi.isSubscribed();
     },
-    enabled: !!user?.id && typeof window !== 'undefined',
+    enabled: !!user?.id && isStandalonePwa && pushSupported,
+    retry: false,
     staleTime: 5 * 60 * 1000,
   });
 
   const subscribeMutation = useMutation({
     mutationFn: async (): Promise<boolean> => {
-      if (!user) throw new Error('User is not authenticated');
+      if (!user) return false;
 
-      if (!isPushSupported()) throw new Error('Push notifications are not supported');
+      if (!isStandalonePwa || !pushSupported) return false;
 
       if (Notification.permission === 'denied') {
-        throw new Error('Notification permission is denied');
+        return false;
       }
 
       if (Notification.permission === 'default') {
         const permission = await Notification.requestPermission();
         if (permission !== 'granted') {
-          throw new Error('Notification permission was not granted');
+          return false;
         }
       }
 
@@ -112,7 +130,7 @@ export function usePushNotifications() {
       const subscription = await createBrowserSubscription(registration);
 
       if (!subscription?.endpoint) {
-        throw new Error('Browser did not create a push subscription');
+        return false;
       }
 
       await pushApi.subscribe(subscription);
@@ -128,7 +146,7 @@ export function usePushNotifications() {
     mutationFn: async (): Promise<boolean> => {
       if (!user) return false;
 
-      if (!isPushSupported()) return false;
+      if (!pushSupported) return false;
 
       const registration = await navigator.serviceWorker.ready;
       const subscription = await registration.pushManager.getSubscription();
@@ -147,7 +165,7 @@ export function usePushNotifications() {
 
   // Keep server subscription in sync when permission changes outside our button.
   useEffect(() => {
-    if (!user || !isPushSupported()) return;
+    if (!user || !isStandalonePwa || !pushSupported) return;
 
     const syncPermissionState = () => {
       if (document.visibilityState === 'hidden') return;
@@ -192,14 +210,15 @@ export function usePushNotifications() {
         })
         .catch(() => {});
     };
-  }, [queryClient, subscribeMutation, user]);
+  }, [isStandalonePwa, pushSupported, queryClient, subscribeMutation, user]);
 
   return {
     isSubscribed: !!isSubscribed,
     isCheckingSubscription,
     isSubscribing: subscribeMutation.isPending,
     isUnsubscribing: unsubscribeMutation.isPending,
-    pushSupported: isPushSupported(),
+    isSupported: pushSupported,
+    pushSupported,
     subscribe: useCallback(() => subscribeMutation.mutateAsync(), [subscribeMutation]),
     unsubscribe: useCallback(() => unsubscribeMutation.mutateAsync(), [unsubscribeMutation]),
   };
