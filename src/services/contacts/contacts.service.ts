@@ -1,4 +1,3 @@
-import { sanitizeSearchQuery } from '@/lib/sanitize';
 import { supabase } from '@/lib/supabase/client';
 import { handleError } from '@/shared/lib/error-handler';
 import { NetworkError } from '@/shared/lib/errors';
@@ -12,7 +11,11 @@ export const contactsApi = {
     if (!currentUserId || queryText.trim().length < 2) {
       return [];
     }
-    const safeQuery = sanitizeSearchQuery(queryText, 100);
+    // NOTE: Do NOT escape ILIKE special characters here.
+    // The database function search_users() already escapes them correctly.
+    // Double-escaping would break searches for emails containing _ or %
+    // (e.g. john_doe@gmail.com).
+    const safeQuery = queryText.trim().slice(0, 100);
 
     const { data, error } = await supabase.rpc('search_users', {
       p_query: safeQuery,

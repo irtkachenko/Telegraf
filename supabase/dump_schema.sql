@@ -546,6 +546,8 @@ DECLARE
   sender_name TEXT;
   chat_record RECORD;
   payload JSONB;
+  v_supabase_url TEXT;
+  v_service_role_key TEXT;
 BEGIN
   -- Only process if this is a new message (not an update)
   IF TG_OP = 'INSERT' THEN
@@ -585,15 +587,25 @@ BEGIN
       'chatName', 'Чат'
     );
     
+    -- Get Supabase URL and service role key with hardcoded fallback
+    v_supabase_url := COALESCE(
+      current_setting('app.supabase_url', true),
+      'https://qdvtruuujxmjmmtbsizq.supabase.co'
+    );
+    v_service_role_key := COALESCE(
+      current_setting('app.service_role_key', true),
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFkdnRydXV1anhtam1tdGJzaXpxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2OTE2Mzg5NywiZXhwIjoyMDg0NzM5ODk3fQ.4Zi2WvwMjxx-1Kh6haKGs74M1HCWtWWeWQBXuOtb5BM'
+    );
+    
     -- Call Edge Function asynchronously (don't block the transaction)
-    -- Using net.http_post (pg_net extension) - NOT extensions.net.http_post
+    -- net.http_post expects body => jsonb (NOT text)
     PERFORM net.http_post(
-      url := current_setting('app.supabase_url', true) || '/functions/v1/send-push-notification',
+      url := v_supabase_url || '/functions/v1/send-push-notification',
       headers := jsonb_build_object(
         'Content-Type', 'application/json',
-        'Authorization', 'Bearer ' || current_setting('app.service_role_key', true)
+        'Authorization', 'Bearer ' || v_service_role_key
       ),
-      body := payload::text
+      body := payload
     );
     
     -- Log the attempt (optional, for debugging)
