@@ -111,7 +111,7 @@ export default function ChatPage() {
 
   // Redirect on error
   useEffect(() => {
-    if (!(isAuthLoading || isChatLoading) && (isError || !(chat || isMessagesLoading))) {
+    if (!(isAuthLoading || isChatLoading) && (isError || (!chat && !isMessagesLoading))) {
       router.replace('/');
     }
   }, [isAuthLoading, isChatLoading, chat, isError, router, isMessagesLoading]);
