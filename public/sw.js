@@ -31,7 +31,22 @@ self.addEventListener('activate', (event) => {
         )
       )
       .then(() => self.clients.claim())
+      .then(() => {
+        // Повідомляємо всі відкриті вкладки, що нова версія SW активована
+        return self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+          clients.forEach((client) => {
+            client.postMessage({ type: 'NEW_VERSION_ACTIVATED' });
+          });
+        });
+      })
   );
+});
+
+// 2.1 Message Event: Обробка запиту на негайне оновлення від клієнта
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 // 3. Fetch Event: Абсолютно безпечний обробник мережевих запитів

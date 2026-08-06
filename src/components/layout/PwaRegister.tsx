@@ -18,7 +18,21 @@ export default function PwaRegister() {
             }
           }
 
-          await navigator.serviceWorker.register('/sw.js');
+          const registration = await navigator.serviceWorker.register('/sw.js');
+
+          // Відстежуємо виявлення нової версії Service Worker
+          registration.addEventListener('updatefound', () => {
+            const newWorker = registration.installing;
+            if (!newWorker) return;
+
+            // Коли новий SW завантажився — надсилаємо SKIP_WAITING,
+            // щоб він активувався негайно (без очікування закриття вкладок)
+            newWorker.addEventListener('statechange', () => {
+              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                newWorker.postMessage({ type: 'SKIP_WAITING' });
+              }
+            });
+          });
         } catch (error) {
           console.error('Service worker registration failed:', error);
         }
