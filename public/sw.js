@@ -49,6 +49,12 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Never cache API routes - always fetch from network
+  if (url.pathname.startsWith('/api/')) {
+    event.respondWith(fetch(request));
+    return;
+  }
+
   // Navigation requests: always use the network so HTML points at the current build.
   if (request.mode === 'navigate') {
     event.respondWith(fetch(request));

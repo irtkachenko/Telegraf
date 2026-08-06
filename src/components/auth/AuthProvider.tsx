@@ -133,6 +133,15 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     [normalizeUser],
   );
 
+  // Safety timeout: if loading takes too long, force it to false
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      setLoading(false);
+    }, 5000); // 5 second safety timeout
+
+    return () => clearTimeout(timeout);
+  }, []);
+
   useEffect(() => {
     let mounted = true;
 

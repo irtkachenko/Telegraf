@@ -1,7 +1,6 @@
 'use client';
 
 import Image from 'next/image';
-import { handleSignIn } from '@/lib/auth';
 
 export default function Home() {
   return (
@@ -14,7 +13,6 @@ export default function Home() {
           width={120}
           height={120}
           priority
-          className="drop-shadow-[0_0_30px_rgba(94,106,210,0.4)]"
         />
       </div>
     </div>
