@@ -117,6 +117,8 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
 
   const handleAuthStateChange = useCallback(
     async (event: AuthChangeEvent, session: Session | null) => {
+      console.log('[Auth] Auth state changed:', event, session?.user?.email || 'null');
+
       if (event === 'INITIAL_SESSION') {
         setLoading(false);
       }
@@ -129,6 +131,11 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
       } else {
         setUser(null);
       }
+
+      console.log('[Auth] User session state:', { 
+        userId: currentUser?.id || null, 
+        isLoading: false 
+      });
     },
     [normalizeUser],
   );
@@ -147,6 +154,8 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
 
     const initializeAuth = async () => {
       try {
+        console.log('[Auth] Initializing auth...');
+        
         const {
           data: { user },
           error,
@@ -155,6 +164,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
         if (!mounted) return;
 
         if (error) {
+          console.log('[Auth] Auth init error:', error.message);
           if (error.status === 400 || error.status === 401) {
             setLoading(false);
             return;
@@ -167,9 +177,11 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
           );
           setLoading(false);
         } else {
+          console.log('[Auth] Auth init success, user:', user?.email || 'null');
           await handleAuthStateChange('INITIAL_SESSION', user ? ({ user } as Session) : null);
         }
       } catch {
+        console.log('[Auth] Auth init exception');
         handleError(
           new DatabaseError('Error during auth initialization', 'authInit', 'AUTH_INIT_ERROR', 500),
           'AuthProvider',
