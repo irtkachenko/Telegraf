@@ -48,18 +48,22 @@ export function useDecryptChatMessages(
     if (pending.length === 0) return;
 
     const decryptAll = async () => {
-      const updates = new Map<string, string>();
+      const results = await Promise.all(
+        pending.map(async (msg) => {
+          const plaintext = await tryDecryptMessageContent(
+            msg.encrypted_content!,
+            msg.encrypted_iv!,
+            sharedSecret,
+          );
+          return plaintext !== null ? { id: msg.id, decrypted: plaintext } : null;
+        }),
+      );
 
-      for (const msg of pending) {
-        const plaintext = await tryDecryptMessageContent(
-          msg.encrypted_content!,
-          msg.encrypted_iv!,
-          sharedSecret,
-        );
-        if (plaintext !== null) {
-          updates.set(msg.id, plaintext);
-          decryptedIds.current.add(msg.id);
-        }
+      const updates = new Map<string, string>();
+      for (const result of results) {
+        if (!result) continue;
+        updates.set(result.id, result.decrypted);
+        decryptedIds.current.add(result.id);
       }
 
       if (updates.size === 0) return;
@@ -80,7 +84,7 @@ export function useDecryptChatMessages(
     };
 
     decryptAll();
-  }, [sharedSecret, messages, chatId, queryClient]);
+  }, [sharedSecret, chatId, messages, queryClient]);
 
   return { sharedSecret };
 }
