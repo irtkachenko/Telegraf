@@ -16,6 +16,11 @@ function isPushSupported(): boolean {
   );
 }
 
+async function getPushRegistration(): Promise<ServiceWorkerRegistration> {
+  await navigator.serviceWorker.register('/sw.js');
+  return navigator.serviceWorker.ready;
+}
+
 function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
@@ -40,8 +45,7 @@ async function createBrowserSubscription(
   }
 
   if (!VAPID_PUBLIC_KEY) {
-    console.error('NEXT_PUBLIC_VAPID_PUBLIC_KEY is not set');
-    return null;
+    throw new Error('NEXT_PUBLIC_VAPID_PUBLIC_KEY is not set');
   }
 
   const subscription = await registration.pushManager.subscribe({
@@ -71,10 +75,8 @@ export function usePushNotifications() {
     queryFn: async () => {
       if (!user) return false;
 
-      // Check if Push API is supported
       if (!isPushSupported()) return false;
 
-      // Check permission
       if (Notification.permission !== 'granted') return false;
 
       const registration = await navigator.serviceWorker.getRegistration('/sw.js');
@@ -91,28 +93,34 @@ export function usePushNotifications() {
 
   const subscribeMutation = useMutation({
     mutationFn: async (): Promise<boolean> => {
-      if (!user) return false;
+      if (!user) throw new Error('User is not authenticated');
 
-      if (!isPushSupported()) return false;
+      if (!isPushSupported()) throw new Error('Push notifications are not supported');
 
-      if (Notification.permission === 'denied') return false;
-
-      // Request permission if not yet granted
-      if (Notification.permission === 'default') {
-        const permission = await Notification.requestPermission();
-        if (permission !== 'granted') return false;
+      if (Notification.permission === 'denied') {
+        throw new Error('Notification permission is denied');
       }
 
-      const registration = await navigator.serviceWorker.register('/sw.js');
+      if (Notification.permission === 'default') {
+        const permission = await Notification.requestPermission();
+        if (permission !== 'granted') {
+          throw new Error('Notification permission was not granted');
+        }
+      }
+
+      const registration = await getPushRegistration();
       const subscription = await createBrowserSubscription(registration);
 
-      if (!subscription) return false;
+      if (!subscription?.endpoint) {
+        throw new Error('Browser did not create a push subscription');
+      }
 
       await pushApi.subscribe(subscription);
       return true;
     },
     onSuccess: (subscribed) => {
       queryClient.setQueryData(['push-subscription', user?.id], subscribed);
+      void queryClient.invalidateQueries({ queryKey: ['push-subscription', user?.id] });
     },
   });
 
@@ -137,22 +145,54 @@ export function usePushNotifications() {
     },
   });
 
-  // Auto-unsubscribe from server when browser push permission is revoked
+  // Keep server subscription in sync when permission changes outside our button.
   useEffect(() => {
     if (!user || !isPushSupported()) return;
 
-    const handleVisibilityChange = () => {
-      if (document.visibilityState !== 'visible') return;
+    const syncPermissionState = () => {
+      if (document.visibilityState === 'hidden') return;
 
-      // Re-check permission; if denied, remove server subscription
       if (Notification.permission === 'denied') {
         pushApi.unsubscribe().catch(() => {});
+        queryClient.setQueryData(['push-subscription', user.id], false);
+        return;
+      }
+
+      if (
+        Notification.permission === 'granted' &&
+        !subscribeMutation.isPending &&
+        queryClient.getQueryData(['push-subscription', user.id]) !== true
+      ) {
+        subscribeMutation.mutateAsync().catch(() => {});
       }
     };
 
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [user]);
+    const permissionStatus = navigator.permissions?.query
+      ? navigator.permissions.query({ name: 'notifications' as PermissionName })
+      : null;
+
+    permissionStatus
+      ?.then((status) => {
+        status.addEventListener('change', syncPermissionState);
+      })
+      .catch(() => {});
+
+    window.addEventListener('focus', syncPermissionState);
+    window.addEventListener('pageshow', syncPermissionState);
+    document.addEventListener('visibilitychange', syncPermissionState);
+    syncPermissionState();
+
+    return () => {
+      window.removeEventListener('focus', syncPermissionState);
+      window.removeEventListener('pageshow', syncPermissionState);
+      document.removeEventListener('visibilitychange', syncPermissionState);
+      permissionStatus
+        ?.then((status) => {
+          status.removeEventListener('change', syncPermissionState);
+        })
+        .catch(() => {});
+    };
+  }, [queryClient, subscribeMutation, user]);
 
   return {
     isSubscribed: !!isSubscribed,

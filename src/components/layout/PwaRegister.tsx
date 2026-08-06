@@ -8,9 +8,6 @@ export default function PwaRegister() {
       const register = async () => {
         try {
           if (process.env.NODE_ENV !== 'production') {
-            const registrations = await navigator.serviceWorker.getRegistrations();
-            await Promise.all(registrations.map((registration) => registration.unregister()));
-
             if ('caches' in window) {
               const keys = await caches.keys();
               await Promise.all(
@@ -19,8 +16,6 @@ export default function PwaRegister() {
                   .map((key) => caches.delete(key)),
               );
             }
-
-            return;
           }
 
           await navigator.serviceWorker.register('/sw.js');
