@@ -1,5 +1,8 @@
-/* Telegraf Service Worker - PWA shell + Web Push notifications */
-const CACHE_NAME = 'telegraf-cache-v2';
+/* Telegraf Service Worker - PWA Shell + Safe Caching + Web Push */
+
+const CACHE_NAME = 'telegraf-cache-v3';
+
+// Файли, які гарантовано кешуємо при інсталяції Service Worker
 const STATIC_ASSETS = [
   '/manifest.json',
   '/icons/android/launchericon-192x192.png',
@@ -7,89 +10,94 @@ const STATIC_ASSETS = [
   '/icons/ios/180.png',
 ];
 
-// Install: pre-cache static assets
+// 1. Install Event: Пре-кешування статичних іконок та маніфесту
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches
       .open(CACHE_NAME)
       .then((cache) => cache.addAll(STATIC_ASSETS))
-      .then(() => self.skipWaiting()),
+      .then(() => self.skipWaiting())
   );
 });
 
-// Activate: clean up old caches
+// 2. Activate Event: Видалення старих версій кешу та негайне перехоплення контролю
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches
       .keys()
       .then((keys) =>
-        Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))),
+        Promise.all(
+          keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
+        )
       )
-      .then(() => self.clients.claim()),
+      .then(() => self.clients.claim())
   );
 });
 
-// Fetch: network-first for navigation, cache-first for static assets
+// 3. Fetch Event: Абсолютно безпечний обробник мережевих запитів
 self.addEventListener('fetch', (event) => {
   const { request } = event;
 
-  // Only handle GET requests
+  // Обробляємо тільки звичайні GET-запити
   if (request.method !== 'GET') return;
 
-  // Skip non-http(s) requests (e.g. chrome-extension://)
   const url = new URL(request.url);
-  if (!url.protocol.startsWith('http')) return;
 
+  // Ігноруємо розширення браузера та зовнішні ресурси (із сторонніх доменів)
+  if (!url.protocol.startsWith('http')) return;
   if (url.origin !== self.location.origin) return;
 
-  // Never cache Next.js runtime/build assets. Stale chunks can make React render
-  // imported components as undefined after an app update.
-  if (url.pathname.startsWith('/_next/')) {
-    event.respondWith(fetch(request));
+  // 🚨 ЗОНА БЕЗПЕКИ: Повний обхід Service Worker для динамічного контенту!
+  // Якщо ми робимо просто `return;` без `event.respondWith()`, браузер 
+  // обробляє запити через стандартну мережу. Це 100% захищає від білих/чорних екранів при F5.
+  
+  // - Навігація (перехід по сторінках / оновлення F5 / HTML)
+  // - API роути Next.js та Supabase
+  // - Runtime бандли Next.js (файли з /_next/)
+  if (
+    request.mode === 'navigate' ||
+    url.pathname.startsWith('/_next/') ||
+    url.pathname.startsWith('/api/')
+  ) {
     return;
   }
 
-  // Never cache API routes - always fetch from network
-  if (url.pathname.startsWith('/api/')) {
-    event.respondWith(fetch(request));
-    return;
-  }
-
-  // Navigation requests: always use the network so HTML points at the current build.
-  if (request.mode === 'navigate') {
-    event.respondWith(fetch(request));
-    return;
-  }
-
+  // Кешуємо тільки ТІЛЬКИ безпечні статичні файли (зображення, шрифти, маніфест)
   const isSafeStaticAsset =
     request.destination === 'image' ||
     request.destination === 'font' ||
     url.pathname === '/manifest.json';
 
   if (!isSafeStaticAsset) {
-    event.respondWith(fetch(request));
     return;
   }
 
-  // Static assets that are safe across builds: cache-first, then network.
+  // Стратегія Cache-First для статичних ресурсів (медіа та шрифти)
   event.respondWith(
-    caches.match(request).then(
-      (cached) =>
-        cached ||
-        fetch(request).then((response) => {
-          if (response.ok) {
-            const copy = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
-          }
-          return response;
-        }),
-    ),
+    caches.match(request).then((cached) => {
+      if (cached) return cached;
+
+      return fetch(request).then((response) => {
+        // Зберігаємо в кеш тільки успішні відповіді
+        if (response && response.status === 200 && response.type === 'basic') {
+          const responseToCache = response.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(request, responseToCache);
+          });
+        }
+        return response;
+      }).catch((err) => {
+        console.warn('[SW] Static asset fetch failed:', err);
+        // Повертаємо пусту відповідь замість помилки промісу
+        return new Response('', { status: 404, statusText: 'Not Found' });
+      });
+    })
   );
 });
 
-// Push: display notification from server
+// 4. Push Event: Прийом та відображення пуш-повідомлень від сервера
 self.addEventListener('push', (event) => {
-  let data = { title: 'Telegraf', body: 'New message', url: '/' };
+  let data = { title: 'Telegraf', body: 'Нове повідомлення', url: '/' };
 
   try {
     if (event.data) {
@@ -97,7 +105,7 @@ self.addEventListener('push', (event) => {
       data = { ...data, ...parsed };
     }
   } catch {
-    // Fallback to default data if JSON parsing fails
+    // Якщо прийшов не JSON, використовуємо дефолтний фолбек
   }
 
   const options = {
@@ -111,22 +119,22 @@ self.addEventListener('push', (event) => {
   event.waitUntil(self.registration.showNotification(data.title, options));
 });
 
-// Notification click: open or focus the target URL
+// 5. Notification Click Event: Клік по пуш-повідомленню
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
-  const url = new URL(event.notification.data?.url || '/', self.location.origin).href;
+  const targetUrl = new URL(event.notification.data?.url || '/', self.location.origin).href;
 
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      // Focus existing tab if one is open
+      // Якщо вкладка додатка вже відкрита — фокусуємося на ній
       for (const client of clientList) {
-        if (client.url === url && 'focus' in client) {
+        if (client.url === targetUrl && 'focus' in client) {
           return client.focus();
         }
       }
-      // Otherwise open a new window
-      return self.clients.openWindow(url);
-    }),
+      // Інакше відкриваємо нову вкладку
+      return self.clients.openWindow(targetUrl);
+    })
   );
 });
