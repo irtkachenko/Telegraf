@@ -7,6 +7,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { SignInButton, SignOutButton } from '../auth/auth-buttons';
+import { PwaInstallButton } from '../pwa/PwaInstallButton';
 import Logo from '../ui/Logo';
 import { ConnectionIndicator } from './ConnectionIndicator';
 
@@ -40,6 +41,7 @@ export default function Navbar({ user, onMenuClick }: NavbarProps) {
       {/* Right: Connection Status & Auth */}
       <div className="flex items-center gap-3">
         {user && <ConnectionIndicator showText />}
+        {user && <PwaInstallButton />}
         {user ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

@@ -1,6 +1,6 @@
 'use client';
 
-import { Loader2, MessageSquarePlus, User as UserIcon } from 'lucide-react';
+import { LoaderCircle, MessageSquarePlus, User as UserIcon } from 'lucide-react';
 import Image from 'next/image';
 import { memo } from 'react';
 import { useSupabaseAuth } from '@/components/auth/AuthProvider';
@@ -95,7 +95,7 @@ function ContactItemBase({ user, disabled, onActionStart, onActionEnd }: Contact
         title="Send Message"
       >
         {getOrCreateChat.isPending ? (
-          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          <LoaderCircle className="w-3.5 h-3.5 animate-spin" />
         ) : (
           <MessageSquarePlus className="w-3.5 h-3.5" />
         )}

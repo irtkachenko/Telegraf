@@ -1,6 +1,6 @@
 'use client';
 
-import { Loader2, User as UserIcon } from 'lucide-react';
+import { LoaderCircle, User as UserIcon } from 'lucide-react';
 import { memo, useState } from 'react';
 import { useSearchUsers } from '@/hooks/contacts';
 import { ContactItem } from './ContactItem';
@@ -19,7 +19,7 @@ function ContactsListBase({ query }: ContactsListProps) {
   if (isLoading) {
     return (
       <div className="flex-1 flex items-center justify-center p-8 text-gray-500 text-sm">
-        <Loader2 className="w-4 h-4 animate-spin mr-2" />
+        <LoaderCircle className="w-4 h-4 animate-spin mr-2" />
         Шукаємо...
       </div>
     );

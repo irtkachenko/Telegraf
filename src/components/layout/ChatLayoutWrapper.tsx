@@ -3,6 +3,7 @@
 import { usePathname } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSupabaseAuth } from '@/components/auth/AuthProvider';
+import PushSubscriptionGuard from '@/components/push/PushSubscriptionGuard';
 import { useChatsRealtime } from '@/hooks/chat';
 import Navbar from './Navbar';
 
@@ -28,7 +29,6 @@ export default function ChatLayoutWrapper({ children, sidebar, user }: ChatLayou
   useEffect(() => {
     if (pathname !== prevPathnameRef.current) {
       prevPathnameRef.current = pathname;
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsSidebarOpen(false);
     }
   }, [pathname]);
@@ -55,6 +55,7 @@ export default function ChatLayoutWrapper({ children, sidebar, user }: ChatLayou
   return (
     <div className="flex flex-col min-h-[100svh]">
       <Navbar user={user} onMenuClick={toggleSidebar} />
+      {user && <PushSubscriptionGuard />}
 
       <div className="flex flex-1 pt-14 relative overflow-hidden">
         {/* Overlay for mobile */}

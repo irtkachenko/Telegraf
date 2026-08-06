@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { ChevronRight } from 'lucide-react';
+import { PwaInstallButton } from '@/components/pwa/PwaInstallButton';
 import { handleSignIn } from '@/lib/auth';
 
 export default function Home() {
@@ -82,8 +83,8 @@ export default function Home() {
           <span className="text-[#3b82f6]">.</span>
         </h1>
 
-        {/* Action Button matching screenshot */}
-        <div className="mt-8">
+        {/* Action Buttons */}
+        <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
           <button
             type="button"
             onClick={() => handleSignIn()}
@@ -113,6 +114,8 @@ export default function Home() {
 
             <ChevronRight className="w-4 h-4 text-gray-300 group-hover:translate-x-0.5 transition-transform" />
           </button>
+
+          <PwaInstallButton variant="landing" />
         </div>
       </main>
 
@@ -125,4 +128,4 @@ export default function Home() {
 }
 
 
-
+

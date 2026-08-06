@@ -7,6 +7,8 @@ export {
   decryptFileAttachment,
 } from './crypto';
 export { keysApi } from './keys';
+export { pushApi } from './push';
+export type { PushSubscriptionPayload } from './push';
 export type { RealtimeChatPayload, RealtimeMessagePayload, RealtimeUserPayload } from './realtime';
 export { realtimeApi } from './realtime';
 export { storageApi, uploadFileOptimized, uploadEncryptedFileOptimized } from './storage';

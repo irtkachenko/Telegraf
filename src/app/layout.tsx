@@ -1,8 +1,9 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Geist, Geist_Mono, Tektur, Chakra_Petch } from 'next/font/google';
 import AuthProvider from '@/components/auth/AuthProvider';
 import ChatLayoutWrapper from '@/components/layout/ChatLayoutWrapper';
 import GlobalCleanup from '@/components/layout/GlobalCleanup';
+import PwaRegister from '@/components/layout/PwaRegister';
 import Providers from '@/components/Providers';
 import Sidebar from '@/components/sidebar/Sidebar';
 import { createClient } from '@/lib/supabase/server';
@@ -32,9 +33,20 @@ const chakraPetch = Chakra_Petch({
 export const metadata: Metadata = {
   title: 'Telegraf',
   description: 'A modern messaging app',
+  manifest: '/manifest.json',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'Telegraf',
+  },
   icons: {
     icon: '/favicon.ico',
+    apple: '/icons/ios/180.png',
   },
+};
+
+export const viewport: Viewport = {
+  themeColor: '#007bff',
 };
 
 export default async function RootLayout({
@@ -53,6 +65,7 @@ export default async function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} ${tektur.variable} ${chakraPetch.variable} antialiased bg-black text-white`}
         suppressHydrationWarning
       >
+        <PwaRegister />
         <Providers>
           <AuthProvider>
             <GlobalCleanup>

@@ -3,10 +3,10 @@
 import type {
   AuthChangeEvent,
   Session,
-  SupabaseClient,
   User as SupabaseUser,
 } from '@supabase/supabase-js';
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { AuthContext } from './auth-context';
 import { useE2EEInit } from '@/hooks/keys';
 import { useGlobalRealtime } from '@/hooks/useGlobalRealtime';
 import { createClient } from '@/lib/supabase/client';
@@ -15,23 +15,7 @@ import { AuthError, DatabaseError } from '@/shared/lib/errors';
 import type { AppUser } from '@/types';
 import { UserUtils } from '@/types/auth';
 
-interface AuthContextType {
-  user: AppUser | null;
-  supabaseUser: SupabaseUser | null;
-  loading: boolean;
-  supabase: SupabaseClient;
-  refreshUser: () => Promise<void>;
-}
-
-const AuthContext = createContext<AuthContextType>({
-  user: null,
-  supabaseUser: null,
-  loading: true,
-  supabase: {} as SupabaseClient,
-  refreshUser: async () => {},
-});
-
-export const useSupabaseAuth = () => useContext(AuthContext);
+export { useSupabaseAuth } from './auth-context';
 
 async function fetchDbProfile(
   supabase: ReturnType<typeof createClient>,

@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { useEffect } from 'react';
-import { useSupabaseAuth } from '@/components/auth/AuthProvider';
+import { useSupabaseAuth } from '@/components/auth/auth-context';
 import {
   generateKeyPair,
   exportPublicKey,

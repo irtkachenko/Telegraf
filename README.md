@@ -9,7 +9,7 @@
 
 Telegraf is a high-performance, real-time 1:1 web messaging application built with **Next.js (App Router)** and **Supabase**. It features instant message delivery, real-time presence, typing indicators, client-side image compression, and secure private attachment storage.
 
-🔗 **Live Demo:** [https://telegraf-navy.vercel.app/](https://telegraf-navy.vercel.app/)
+🔗 **Live Demo:** [/](https://telegraf-navy.vercel.app/)
 
 ---
 
@@ -26,6 +26,7 @@ Telegraf is a high-performance, real-time 1:1 web messaging application built wi
 - ⚡ **Realtime Messaging:** Instant message creation, editing, deletion, and read receipts with minimal latency.
 - 🟢 **Presence & Typing:** Realtime online/offline presence indicators and active typing feedback.
 - 📎 **Media & Attachments:** Private Supabase Storage bucket with client-side image compression (`browser-image-compression`) and secure Signed URLs.
+- 📱 **PWA & Web Push:** Installable Progressive Web App with offline caching and background Web Push notifications via VAPID keys.
 - 🚀 **Performance:** Virtualized message list using `react-virtuoso` for smooth handling of extensive chat histories.
 - 🔒 **Database Security:** Custom PostgreSQL schema with Row Level Security (RLS) policies, rate limiting, and database triggers.
 
@@ -137,6 +138,11 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=<your-anon-key>
 
 # Server-only (Do NOT expose to client)
 SUPABASE_SERVICE_ROLE_KEY=<your-service-role-key>
+
+# Web Push (VAPID keys)
+# Generate with: npx web-push generate-vapid-keys
+NEXT_PUBLIC_VAPID_PUBLIC_KEY=<your-vapid-public-key>
+VAPID_PRIVATE_KEY=<your-vapid-private-key>
 ```
 
 ### 3. Installation & Run

@@ -61,6 +61,8 @@ export const storageConfig: StorageConfig = {
     'gif',
     'webp',
     'ico',
+    'json',
+    'webmanifest',
     'css',
     'js',
     'woff',

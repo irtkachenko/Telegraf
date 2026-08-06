@@ -4,7 +4,7 @@ import { AlertCircle, RotateCcw } from 'lucide-react';
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { handleError } from '@/shared/lib/error-handler';
-import { isAppError } from '@/shared/lib/errors';
+import { createErrorFromStatus, isAppError } from '@/shared/lib/errors';
 
 interface Props {
   children: ReactNode;
@@ -38,7 +38,7 @@ export class GlobalErrorBoundary extends Component<Props, State> {
     if (this.state.hasError && this.state.error) {
       const appError = isAppError(this.state.error)
         ? this.state.error
-        : handleError(this.state.error, 'GlobalErrorBoundary');
+        : createErrorFromStatus(500, this.state.error.message, 'UNKNOWN_ERROR');
 
       return (
         <div className="flex min-h-screen flex-col items-center justify-center bg-black text-white p-4">

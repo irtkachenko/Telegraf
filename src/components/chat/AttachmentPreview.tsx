@@ -1,6 +1,6 @@
 'use client';
 
-import { FileIcon, Loader2, X } from 'lucide-react';
+import { FileIcon, LoaderCircle, X } from 'lucide-react';
 import Image from 'next/image';
 import type { OptimisticAttachment } from '@/types';
 
@@ -16,7 +16,7 @@ export default function AttachmentPreview({ attachment, onRemove }: AttachmentPr
     <div className="relative group w-20 h-20 rounded-lg overflow-hidden border border-white/10 bg-white/5 flex items-center justify-center">
       {attachment.uploading && (
         <div className="absolute inset-0 z-10 bg-black/40 flex items-center justify-center">
-          <Loader2 className="w-5 h-5 text-white animate-spin" />
+          <LoaderCircle className="w-5 h-5 text-white animate-spin" />
         </div>
       )}
 
