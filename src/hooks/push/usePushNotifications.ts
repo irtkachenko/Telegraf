@@ -75,9 +75,14 @@ export function usePushNotifications() {
       if (!isPushSupported()) return false;
 
       // Check permission
-      if (Notification.permission === 'denied') return false;
+      if (Notification.permission !== 'granted') return false;
 
-      // Check if there's an active server-side subscription
+      const registration = await navigator.serviceWorker.getRegistration('/sw.js');
+      const browserSubscription = await registration?.pushManager.getSubscription();
+
+      if (!browserSubscription) return false;
+
+      // Check if there's an active server-side subscription too.
       return pushApi.isSubscribed();
     },
     enabled: !!user?.id && typeof window !== 'undefined',

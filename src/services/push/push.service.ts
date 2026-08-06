@@ -1,5 +1,3 @@
-import { supabase } from '@/lib/supabase/client';
-
 export type PushSubscriptionPayload = {
   endpoint: string;
   expirationTime: number | null;
@@ -14,32 +12,46 @@ export const pushApi = {
    * Save the browser push subscription for the current user.
    */
   subscribe: async (subscription: PushSubscriptionPayload): Promise<void> => {
-    const { error } = await supabase.rpc('rpc_upsert_push_subscription', {
-      p_subscription: subscription as unknown as Record<string, unknown>,
+    const response = await fetch('/api/push/subscribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ subscription }),
     });
 
-    if (error) throw error;
+    if (!response.ok) {
+      const body = await response.json().catch(() => null);
+      throw new Error(body?.error || 'Failed to save push subscription');
+    }
   },
 
   /**
    * Remove the push subscription for the current user.
    */
   unsubscribe: async (): Promise<void> => {
-    const { error } = await supabase.rpc('rpc_delete_push_subscription');
+    const response = await fetch('/api/push/subscribe', {
+      method: 'DELETE',
+    });
 
-    if (error) throw error;
+    if (!response.ok) {
+      const body = await response.json().catch(() => null);
+      throw new Error(body?.error || 'Failed to delete push subscription');
+    }
   },
 
   /**
    * Check if the current user has an active push subscription.
    */
   isSubscribed: async (): Promise<boolean> => {
-    const { data, error } = await supabase
-      .from('user_push_subscriptions')
-      .select('id', { count: 'exact', head: true })
-      .maybeSingle();
+    const response = await fetch('/api/push/subscribe', {
+      method: 'GET',
+    });
 
-    if (error) throw error;
-    return !!data;
+    if (!response.ok) {
+      const body = await response.json().catch(() => null);
+      throw new Error(body?.error || 'Failed to check push subscription');
+    }
+
+    const body = (await response.json()) as { subscribed?: boolean };
+    return body.subscribed === true;
   },
 };

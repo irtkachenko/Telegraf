@@ -109,7 +109,7 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
-  const url = event.notification.data?.url || '/';
+  const url = new URL(event.notification.data?.url || '/', self.location.origin).href;
 
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
