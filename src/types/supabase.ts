@@ -12,6 +12,31 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.1"
   }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
       chats: {
@@ -140,6 +165,35 @@ export type Database = {
           },
         ]
       }
+      public_keys: {
+        Row: {
+          created_at: string
+          public_key_jwk: Json
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          public_key_jwk: Json
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          public_key_jwk?: Json
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "public_keys_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       rate_limit_config: {
         Row: {
           action: string
@@ -182,6 +236,27 @@ export type Database = {
           user_id?: string
           window_seconds?: number
           window_start?: string
+        }
+        Relationships: []
+      }
+      user_push_subscriptions: {
+        Row: {
+          id: string
+          subscription: Json
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          subscription: Json
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          id?: string
+          subscription?: Json
+          updated_at?: string
+          user_id?: string
         }
         Relationships: []
       }
@@ -239,35 +314,6 @@ export type Database = {
         }
         Relationships: []
       }
-      public_keys: {
-        Row: {
-          created_at: string
-          public_key_jwk: Json
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          public_key_jwk: Json
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          public_key_jwk?: Json
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "public_keys_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: true
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
     }
     Views: {
       [_ in never]: never
@@ -304,6 +350,7 @@ export type Database = {
         }
       }
       rpc_delete_message: { Args: { p_message_id: string }; Returns: string }
+      rpc_delete_push_subscription: { Args: never; Returns: undefined }
       rpc_edit_message: {
         Args: { p_content: string; p_message_id: string }
         Returns: {
@@ -312,6 +359,8 @@ export type Database = {
           client_id: string | null
           content: string | null
           created_at: string
+          encrypted_content: string | null
+          encrypted_iv: string | null
           id: string
           reply_to_id: string | null
           sender_id: string
@@ -324,6 +373,7 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      rpc_get_public_key: { Args: { p_user_id: string }; Returns: Json }
       rpc_mark_chat_as_read: {
         Args: { p_chat_id: string; p_message_id: string }
         Returns: undefined
@@ -351,6 +401,12 @@ export type Database = {
           sender_id: string
           updated_at: string | null
         }
+        SetofOptions: {
+          from: "*"
+          to: "messages"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       rpc_send_message: {
         Args: {
@@ -366,6 +422,8 @@ export type Database = {
           client_id: string | null
           content: string | null
           created_at: string
+          encrypted_content: string | null
+          encrypted_iv: string | null
           id: string
           reply_to_id: string | null
           sender_id: string
@@ -378,12 +436,12 @@ export type Database = {
           isSetofReturn: false
         }
       }
-      rpc_get_public_key: {
-        Args: { p_user_id: string }
-        Returns: Json
-      }
       rpc_upsert_public_key: {
         Args: { p_public_key_jwk: Json }
+        Returns: undefined
+      }
+      rpc_upsert_push_subscription: {
+        Args: { p_subscription: Json }
         Returns: undefined
       }
       search_users: {
@@ -525,6 +583,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {},
   },

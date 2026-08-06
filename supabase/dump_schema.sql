@@ -13,48 +13,13 @@ SET client_min_messages = warning;
 SET row_security = off;
 
 
-CREATE EXTENSION IF NOT EXISTS "pg_cron" WITH SCHEMA "pg_catalog";
+CREATE SCHEMA IF NOT EXISTS "public";
 
 
-
-
-
-
-CREATE SCHEMA IF NOT EXISTS "drizzle";
-
-
-ALTER SCHEMA "drizzle" OWNER TO "postgres";
+ALTER SCHEMA "public" OWNER TO "pg_database_owner";
 
 
 COMMENT ON SCHEMA "public" IS 'standard public schema';
-
-
-
-CREATE EXTENSION IF NOT EXISTS "pg_stat_statements" WITH SCHEMA "extensions";
-
-
-
-
-
-
-CREATE EXTENSION IF NOT EXISTS "pgcrypto" WITH SCHEMA "extensions";
-
-
-
-
-
-
-CREATE EXTENSION IF NOT EXISTS "supabase_vault" WITH SCHEMA "vault";
-
-
-
-
-
-
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA "extensions";
-
-
-
 
 
 
@@ -226,12 +191,12 @@ CREATE OR REPLACE FUNCTION "public"."handle_new_user"() RETURNS "trigger"
 BEGIN
   INSERT INTO public.users (id, email, name, image)
   VALUES (
-    new.id::text,
-    new.email, 
-    new.raw_user_meta_data->>'full_name', 
-    new.raw_user_meta_data->>'avatar_url'
+    NEW.id::text,
+    NEW.email,
+    NEW.raw_user_meta_data->>'full_name',
+    NEW.raw_user_meta_data->>'avatar_url'
   );
-  RETURN new;
+  RETURN NEW;
 END;
 $$;
 
@@ -243,8 +208,8 @@ CREATE OR REPLACE FUNCTION "public"."handle_user_delete"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     AS $$
 BEGIN
-  DELETE FROM public.users WHERE id = old.id::text;
-  RETURN old;
+  DELETE FROM public.users WHERE id = OLD.id::text;
+  RETURN OLD;
 END;
 $$;
 
@@ -317,6 +282,20 @@ $$;
 ALTER FUNCTION "public"."rpc_delete_message"("p_message_id" "uuid") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."rpc_delete_push_subscription"() RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+begin
+  delete from public.user_push_subscriptions
+  where user_id = auth.uid();
+end;
+$$;
+
+
+ALTER FUNCTION "public"."rpc_delete_push_subscription"() OWNER TO "postgres";
+
+
 CREATE TABLE IF NOT EXISTS "public"."messages" (
     "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
     "chat_id" "uuid" NOT NULL,
@@ -327,6 +306,8 @@ CREATE TABLE IF NOT EXISTS "public"."messages" (
     "created_at" timestamp without time zone DEFAULT "now"() NOT NULL,
     "updated_at" timestamp with time zone,
     "client_id" "uuid",
+    "encrypted_content" "text",
+    "encrypted_iv" "text",
     CONSTRAINT "content_length_check" CHECK (("char_length"("content") <= 3000))
 );
 
@@ -334,6 +315,14 @@ ALTER TABLE ONLY "public"."messages" REPLICA IDENTITY FULL;
 
 
 ALTER TABLE "public"."messages" OWNER TO "postgres";
+
+
+COMMENT ON COLUMN "public"."messages"."encrypted_content" IS 'Base64-encoded AES-GCM ciphertext of the message content';
+
+
+
+COMMENT ON COLUMN "public"."messages"."encrypted_iv" IS 'Base64-encoded IV used for AES-GCM encryption of the content';
+
 
 
 CREATE OR REPLACE FUNCTION "public"."rpc_edit_message"("p_message_id" "uuid", "p_content" "text") RETURNS "public"."messages"
@@ -362,6 +351,25 @@ $$;
 ALTER FUNCTION "public"."rpc_edit_message"("p_message_id" "uuid", "p_content" "text") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."rpc_get_public_key"("p_user_id" "uuid") RETURNS "jsonb"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+declare
+    v_key jsonb;
+begin
+    select public_key_jwk into v_key
+    from public.public_keys
+    where user_id = p_user_id;
+
+    return v_key;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."rpc_get_public_key"("p_user_id" "uuid") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."rpc_mark_chat_as_read"("p_chat_id" "uuid", "p_message_id" "uuid") RETURNS "void"
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public'
@@ -386,6 +394,37 @@ $$;
 
 
 ALTER FUNCTION "public"."rpc_mark_chat_as_read"("p_chat_id" "uuid", "p_message_id" "uuid") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."rpc_send_encrypted_message"("p_chat_id" "uuid", "p_content" "text" DEFAULT NULL::"text", "p_encrypted_content" "text" DEFAULT NULL::"text", "p_encrypted_iv" "text" DEFAULT NULL::"text", "p_reply_to_id" "uuid" DEFAULT NULL::"uuid", "p_attachments" "jsonb" DEFAULT '[]'::"jsonb", "p_client_id" "uuid" DEFAULT NULL::"uuid") RETURNS "public"."messages"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+declare
+    new_message public.messages;
+    v_is_participant boolean;
+begin
+    select exists (
+        select 1
+        from public.chats
+        where id = p_chat_id
+          and (user_id = auth.uid() or recipient_id = auth.uid())
+    ) into v_is_participant;
+
+    if not v_is_participant then
+        raise exception 'Forbidden: You are not a participant in this chat' using errcode = '42501';
+    end if;
+
+    insert into public.messages(chat_id, sender_id, content, encrypted_content, encrypted_iv, reply_to_id, attachments, client_id)
+    values (p_chat_id, auth.uid(), p_content, p_encrypted_content, p_encrypted_iv, p_reply_to_id, p_attachments, p_client_id)
+    returning * into new_message;
+
+    return new_message;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."rpc_send_encrypted_message"("p_chat_id" "uuid", "p_content" "text", "p_encrypted_content" "text", "p_encrypted_iv" "text", "p_reply_to_id" "uuid", "p_attachments" "jsonb", "p_client_id" "uuid") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."rpc_send_message"("p_chat_id" "uuid", "p_content" "text", "p_reply_to_id" "uuid" DEFAULT NULL::"uuid", "p_attachments" "jsonb" DEFAULT '[]'::"jsonb", "p_client_id" "uuid" DEFAULT NULL::"uuid") RETURNS "public"."messages"
@@ -419,34 +458,158 @@ $$;
 ALTER FUNCTION "public"."rpc_send_message"("p_chat_id" "uuid", "p_content" "text", "p_reply_to_id" "uuid", "p_attachments" "jsonb", "p_client_id" "uuid") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."rpc_upsert_public_key"("p_public_key_jwk" "jsonb") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+begin
+    insert into public.public_keys (user_id, public_key_jwk)
+    values (auth.uid(), p_public_key_jwk)
+    on conflict (user_id)
+    do update set public_key_jwk = p_public_key_jwk;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."rpc_upsert_public_key"("p_public_key_jwk" "jsonb") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."rpc_upsert_push_subscription"("p_subscription" "jsonb") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    SET "search_path" TO 'public'
+    AS $$
+begin
+  insert into public.user_push_subscriptions (user_id, subscription)
+  values (auth.uid(), p_subscription)
+  on conflict (user_id)
+  do update set subscription = p_subscription;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."rpc_upsert_push_subscription"("p_subscription" "jsonb") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."search_users"("p_query" "text") RETURNS TABLE("id" "uuid", "name" "text", "email" "text", "image" "text", "last_seen" timestamp with time zone)
     LANGUAGE "plpgsql" SECURITY DEFINER
     SET "search_path" TO 'public'
     AS $$
+DECLARE
+  v_query text;
+  v_safe_query text;
 BEGIN
-  -- Only allow searches with proper query length
-  IF length(trim(p_query)) < 2 THEN
+  v_query := LEFT(TRIM(COALESCE(p_query, '')), 100);
+
+  IF LENGTH(v_query) < 2 THEN
     RETURN;
   END IF;
-  
-  -- Return query result - EMAIL SEARCH ONLY
+
+  -- Block empty/wildcard-only probes like '%%' or '__'
+  IF REGEXP_REPLACE(v_query, '[\s%_]', '', 'g') = '' THEN
+    RETURN;
+  END IF;
+
+  -- Per-user search throttling (60 requests / minute)
+  PERFORM public.check_action_limit('users_search', 60, 60);
+
+  -- Escape wildcard characters to force literal matching (without E'\\' syntax)
+  v_safe_query := v_query;
+  v_safe_query := REPLACE(v_safe_query, '\', '\\');
+  v_safe_query := REPLACE(v_safe_query, '%', '\%');
+  v_safe_query := REPLACE(v_safe_query, '_', '\_');
+
   RETURN QUERY
-  SELECT 
+  SELECT
     u.id,
     u.name,
     u.email,
     u.image,
     u.last_seen
   FROM public.users u
-  WHERE 
-    u.id != auth.uid()
-    AND u.email ILIKE '%' || trim(p_query) || '%'  -- EMAIL ONLY
+  WHERE
+    u.id <> auth.uid()
+    AND u.email ILIKE '%' || v_safe_query || '%' ESCAPE '\'
+  ORDER BY u.email
   LIMIT 10;
 END;
 $$;
 
 
 ALTER FUNCTION "public"."search_users"("p_query" "text") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."send_push_notification"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+DECLARE
+  v_recipient_id UUID;
+  sender_name TEXT;
+  chat_record RECORD;
+  payload JSONB;
+BEGIN
+  -- Only process if this is a new message (not an update)
+  IF TG_OP = 'INSERT' THEN
+    -- Get chat info to find recipient
+    SELECT 
+      c.user_id, 
+      c.recipient_id 
+    INTO chat_record
+    FROM public.chats AS c
+    WHERE c.id = NEW.chat_id;
+    
+    -- Determine recipient (the one who is NOT the sender)
+    IF chat_record.user_id = NEW.sender_id THEN
+      v_recipient_id := chat_record.recipient_id;
+    ELSE
+      v_recipient_id := chat_record.user_id;
+    END IF;
+    
+    -- Skip if no recipient or recipient is the sender
+    IF v_recipient_id IS NULL OR v_recipient_id = NEW.sender_id THEN
+      RETURN NEW;
+    END IF;
+    
+    -- Get sender name (users table has 'name' column, not 'full_name' or 'username')
+    SELECT 
+      COALESCE(u.name, 'Користувач') 
+    INTO sender_name
+    FROM public.users AS u
+    WHERE u.id = NEW.sender_id;
+    
+    -- Prepare payload for Edge Function
+    payload := jsonb_build_object(
+      'messageId', NEW.id,
+      'chatId', NEW.chat_id,
+      'senderId', NEW.sender_id,
+      'content', NEW.content,
+      'chatName', 'Чат'
+    );
+    
+    -- Call Edge Function asynchronously (don't block the transaction)
+    -- Using pg_net to make HTTP request
+    PERFORM extensions.net.http_post(
+      url := current_setting('app.supabase_url', true) || '/functions/v1/send-push-notification',
+      headers := jsonb_build_object(
+        'Content-Type', 'application/json',
+        'Authorization', 'Bearer ' || current_setting('app.service_role_key', true)
+      ),
+      body := payload::text
+    );
+    
+    -- Log the attempt (optional, for debugging)
+    RAISE LOG 'Push notification triggered for message % to user %', NEW.id, v_recipient_id;
+  END IF;
+  
+  RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."send_push_notification"() OWNER TO "postgres";
+
+
+COMMENT ON FUNCTION "public"."send_push_notification"() IS 'Triggers push notification via Edge Function when a new message is inserted';
+
 
 
 CREATE OR REPLACE FUNCTION "public"."update_last_seen"() RETURNS "void"
@@ -466,6 +629,19 @@ $$;
 ALTER FUNCTION "public"."update_last_seen"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."update_public_keys_updated_at"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+begin
+    new.updated_at = now();
+    return new;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."update_public_keys_updated_at"() OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."update_updated_at_column"() RETURNS "trigger"
     LANGUAGE "plpgsql"
     AS $$
@@ -479,30 +655,28 @@ $$;
 ALTER FUNCTION "public"."update_updated_at_column"() OWNER TO "postgres";
 
 
-CREATE TABLE IF NOT EXISTS "drizzle"."__drizzle_migrations" (
-    "id" integer NOT NULL,
-    "hash" "text" NOT NULL,
-    "created_at" bigint
+CREATE OR REPLACE FUNCTION "public"."update_user_push_subscriptions_updated_at"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+begin
+    new.updated_at = now();
+    return new;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."update_user_push_subscriptions_updated_at"() OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."public_keys" (
+    "user_id" "uuid" NOT NULL,
+    "public_key_jwk" "jsonb" NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT "now"() NOT NULL
 );
 
 
-ALTER TABLE "drizzle"."__drizzle_migrations" OWNER TO "postgres";
-
-
-CREATE SEQUENCE IF NOT EXISTS "drizzle"."__drizzle_migrations_id_seq"
-    AS integer
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
-ALTER SEQUENCE "drizzle"."__drizzle_migrations_id_seq" OWNER TO "postgres";
-
-
-ALTER SEQUENCE "drizzle"."__drizzle_migrations_id_seq" OWNED BY "drizzle"."__drizzle_migrations"."id";
-
+ALTER TABLE "public"."public_keys" OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "public"."rate_limit_config" (
@@ -528,6 +702,17 @@ CREATE TABLE IF NOT EXISTS "public"."rate_limits" (
 ALTER TABLE "public"."rate_limits" OWNER TO "postgres";
 
 
+CREATE TABLE IF NOT EXISTS "public"."user_push_subscriptions" (
+    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+    "user_id" "uuid" NOT NULL,
+    "subscription" "jsonb" NOT NULL,
+    "updated_at" timestamp with time zone DEFAULT "timezone"('utc'::"text", "now"()) NOT NULL
+);
+
+
+ALTER TABLE "public"."user_push_subscriptions" OWNER TO "postgres";
+
+
 CREATE TABLE IF NOT EXISTS "public"."users" (
     "id" "uuid" NOT NULL,
     "name" "text",
@@ -550,15 +735,6 @@ CREATE TABLE IF NOT EXISTS "public"."users" (
 ALTER TABLE "public"."users" OWNER TO "postgres";
 
 
-ALTER TABLE ONLY "drizzle"."__drizzle_migrations" ALTER COLUMN "id" SET DEFAULT "nextval"('"drizzle"."__drizzle_migrations_id_seq"'::"regclass");
-
-
-
-ALTER TABLE ONLY "drizzle"."__drizzle_migrations"
-    ADD CONSTRAINT "__drizzle_migrations_pkey" PRIMARY KEY ("id");
-
-
-
 ALTER TABLE ONLY "public"."chats"
     ADD CONSTRAINT "chats_pkey" PRIMARY KEY ("id");
 
@@ -566,6 +742,11 @@ ALTER TABLE ONLY "public"."chats"
 
 ALTER TABLE ONLY "public"."messages"
     ADD CONSTRAINT "messages_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."public_keys"
+    ADD CONSTRAINT "public_keys_pkey" PRIMARY KEY ("user_id");
 
 
 
@@ -579,6 +760,11 @@ ALTER TABLE ONLY "public"."rate_limits"
 
 
 
+ALTER TABLE ONLY "public"."user_push_subscriptions"
+    ADD CONSTRAINT "unique_user_subscription" UNIQUE ("user_id");
+
+
+
 ALTER TABLE ONLY "public"."users"
     ADD CONSTRAINT "user_email_unique" UNIQUE ("email");
 
@@ -589,11 +775,20 @@ ALTER TABLE ONLY "public"."users"
 
 
 
+ALTER TABLE ONLY "public"."user_push_subscriptions"
+    ADD CONSTRAINT "user_push_subscriptions_pkey" PRIMARY KEY ("id");
+
+
+
 CREATE INDEX "idx_chats_last_message" ON "public"."chats" USING "btree" ("user_id", "recipient_id", "id");
 
 
 
 CREATE INDEX "idx_chats_updated_at" ON "public"."chats" USING "btree" ("updated_at" DESC);
+
+
+
+CREATE UNIQUE INDEX "idx_chats_user_recipient_unique" ON "public"."chats" USING "btree" ("user_id", "recipient_id") WHERE ("recipient_id" IS NOT NULL);
 
 
 
@@ -613,6 +808,10 @@ CREATE INDEX "idx_messages_client_id" ON "public"."messages" USING "btree" ("cli
 
 
 
+CREATE INDEX "idx_public_keys_user_id" ON "public"."public_keys" USING "btree" ("user_id");
+
+
+
 CREATE INDEX "idx_user_email" ON "public"."users" USING "btree" ("email");
 
 
@@ -622,6 +821,10 @@ CREATE INDEX "idx_user_last_seen" ON "public"."users" USING "btree" ("last_seen"
 
 
 CREATE INDEX "idx_user_provider" ON "public"."users" USING "btree" ("provider", "provider_id");
+
+
+
+CREATE INDEX "idx_user_push_subscriptions_user_id" ON "public"."user_push_subscriptions" USING "btree" ("user_id");
 
 
 
@@ -649,7 +852,23 @@ CREATE OR REPLACE TRIGGER "messages_rate_limit_update" BEFORE UPDATE ON "public"
 
 
 
+CREATE OR REPLACE TRIGGER "on_message_insert" AFTER INSERT ON "public"."messages" FOR EACH ROW EXECUTE FUNCTION "public"."send_push_notification"();
+
+
+
+COMMENT ON TRIGGER "on_message_insert" ON "public"."messages" IS 'Sends push notification to recipient when a new message arrives';
+
+
+
 CREATE OR REPLACE TRIGGER "set_messages_updated_at" BEFORE UPDATE ON "public"."messages" FOR EACH ROW EXECUTE FUNCTION "public"."handle_message_update"();
+
+
+
+CREATE OR REPLACE TRIGGER "trg_public_keys_updated_at" BEFORE UPDATE ON "public"."public_keys" FOR EACH ROW EXECUTE FUNCTION "public"."update_public_keys_updated_at"();
+
+
+
+CREATE OR REPLACE TRIGGER "trg_user_push_subscriptions_updated_at" BEFORE UPDATE ON "public"."user_push_subscriptions" FOR EACH ROW EXECUTE FUNCTION "public"."update_user_push_subscriptions_updated_at"();
 
 
 
@@ -688,7 +907,21 @@ ALTER TABLE ONLY "public"."messages"
 
 
 
+ALTER TABLE ONLY "public"."public_keys"
+    ADD CONSTRAINT "public_keys_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."user_push_subscriptions"
+    ADD CONSTRAINT "user_push_subscriptions_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+
+
+
 CREATE POLICY "Allow members full access to their chats" ON "public"."chats" TO "authenticated" USING ((("auth"."uid"() = "user_id") OR ("auth"."uid"() = "recipient_id"))) WITH CHECK ((("auth"."uid"() = "user_id") OR ("auth"."uid"() = "recipient_id")));
+
+
+
+CREATE POLICY "Anyone can read public keys" ON "public"."public_keys" FOR SELECT TO "authenticated" USING (true);
 
 
 
@@ -713,6 +946,10 @@ CREATE POLICY "Users can insert own profile" ON "public"."users" FOR INSERT WITH
 
 
 
+CREATE POLICY "Users can manage their own push subscription" ON "public"."user_push_subscriptions" TO "authenticated" USING (("auth"."uid"() = "user_id")) WITH CHECK (("auth"."uid"() = "user_id"));
+
+
+
 CREATE POLICY "Users can send messages" ON "public"."messages" FOR INSERT WITH CHECK ((("auth"."uid"() = "sender_id") AND ("chat_id" IN ( SELECT "chats"."id"
    FROM "public"."chats"
   WHERE (("chats"."user_id" = "auth"."uid"()) OR ("chats"."recipient_id" = "auth"."uid"()))))));
@@ -724,6 +961,14 @@ CREATE POLICY "Users can update own chats" ON "public"."chats" FOR UPDATE USING 
 
 
 CREATE POLICY "Users can update own profile" ON "public"."users" FOR UPDATE USING (("auth"."uid"() = "id")) WITH CHECK (("auth"."uid"() = "id"));
+
+
+
+CREATE POLICY "Users can update their own public key" ON "public"."public_keys" FOR UPDATE TO "authenticated" USING (("user_id" = "auth"."uid"())) WITH CHECK (("user_id" = "auth"."uid"()));
+
+
+
+CREATE POLICY "Users can upsert their own public key" ON "public"."public_keys" FOR INSERT TO "authenticated" WITH CHECK (("user_id" = "auth"."uid"()));
 
 
 
@@ -761,208 +1006,22 @@ ALTER TABLE "public"."chats" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "public"."messages" ENABLE ROW LEVEL SECURITY;
 
 
+ALTER TABLE "public"."public_keys" ENABLE ROW LEVEL SECURITY;
+
+
 ALTER TABLE "public"."rate_limits" ENABLE ROW LEVEL SECURITY;
 
 
+ALTER TABLE "public"."user_push_subscriptions" ENABLE ROW LEVEL SECURITY;
+
+
 ALTER TABLE "public"."users" ENABLE ROW LEVEL SECURITY;
-
-
-
-
-ALTER PUBLICATION "supabase_realtime" OWNER TO "postgres";
-
-
-
-
-
-
-ALTER PUBLICATION "supabase_realtime" ADD TABLE ONLY "public"."chats";
-
-
-
-ALTER PUBLICATION "supabase_realtime" ADD TABLE ONLY "public"."messages";
-
-
-
-ALTER PUBLICATION "supabase_realtime" ADD TABLE ONLY "public"."users";
-
-
-
-
 
 
 GRANT USAGE ON SCHEMA "public" TO "postgres";
 GRANT USAGE ON SCHEMA "public" TO "anon";
 GRANT USAGE ON SCHEMA "public" TO "authenticated";
 GRANT USAGE ON SCHEMA "public" TO "service_role";
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -1032,6 +1091,12 @@ GRANT ALL ON FUNCTION "public"."rpc_delete_message"("p_message_id" "uuid") TO "s
 
 
 
+GRANT ALL ON FUNCTION "public"."rpc_delete_push_subscription"() TO "anon";
+GRANT ALL ON FUNCTION "public"."rpc_delete_push_subscription"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."rpc_delete_push_subscription"() TO "service_role";
+
+
+
 GRANT ALL ON TABLE "public"."messages" TO "anon";
 GRANT ALL ON TABLE "public"."messages" TO "authenticated";
 GRANT ALL ON TABLE "public"."messages" TO "service_role";
@@ -1044,9 +1109,21 @@ GRANT ALL ON FUNCTION "public"."rpc_edit_message"("p_message_id" "uuid", "p_cont
 
 
 
+GRANT ALL ON FUNCTION "public"."rpc_get_public_key"("p_user_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."rpc_get_public_key"("p_user_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."rpc_get_public_key"("p_user_id" "uuid") TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."rpc_mark_chat_as_read"("p_chat_id" "uuid", "p_message_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."rpc_mark_chat_as_read"("p_chat_id" "uuid", "p_message_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."rpc_mark_chat_as_read"("p_chat_id" "uuid", "p_message_id" "uuid") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."rpc_send_encrypted_message"("p_chat_id" "uuid", "p_content" "text", "p_encrypted_content" "text", "p_encrypted_iv" "text", "p_reply_to_id" "uuid", "p_attachments" "jsonb", "p_client_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."rpc_send_encrypted_message"("p_chat_id" "uuid", "p_content" "text", "p_encrypted_content" "text", "p_encrypted_iv" "text", "p_reply_to_id" "uuid", "p_attachments" "jsonb", "p_client_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."rpc_send_encrypted_message"("p_chat_id" "uuid", "p_content" "text", "p_encrypted_content" "text", "p_encrypted_iv" "text", "p_reply_to_id" "uuid", "p_attachments" "jsonb", "p_client_id" "uuid") TO "service_role";
 
 
 
@@ -1056,9 +1133,27 @@ GRANT ALL ON FUNCTION "public"."rpc_send_message"("p_chat_id" "uuid", "p_content
 
 
 
+GRANT ALL ON FUNCTION "public"."rpc_upsert_public_key"("p_public_key_jwk" "jsonb") TO "anon";
+GRANT ALL ON FUNCTION "public"."rpc_upsert_public_key"("p_public_key_jwk" "jsonb") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."rpc_upsert_public_key"("p_public_key_jwk" "jsonb") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."rpc_upsert_push_subscription"("p_subscription" "jsonb") TO "anon";
+GRANT ALL ON FUNCTION "public"."rpc_upsert_push_subscription"("p_subscription" "jsonb") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."rpc_upsert_push_subscription"("p_subscription" "jsonb") TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."search_users"("p_query" "text") TO "anon";
 GRANT ALL ON FUNCTION "public"."search_users"("p_query" "text") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."search_users"("p_query" "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."send_push_notification"() TO "anon";
+GRANT ALL ON FUNCTION "public"."send_push_notification"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."send_push_notification"() TO "service_role";
 
 
 
@@ -1068,30 +1163,27 @@ GRANT ALL ON FUNCTION "public"."update_last_seen"() TO "service_role";
 
 
 
+GRANT ALL ON FUNCTION "public"."update_public_keys_updated_at"() TO "anon";
+GRANT ALL ON FUNCTION "public"."update_public_keys_updated_at"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."update_public_keys_updated_at"() TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."update_updated_at_column"() TO "anon";
 GRANT ALL ON FUNCTION "public"."update_updated_at_column"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."update_updated_at_column"() TO "service_role";
 
 
 
+GRANT ALL ON FUNCTION "public"."update_user_push_subscriptions_updated_at"() TO "anon";
+GRANT ALL ON FUNCTION "public"."update_user_push_subscriptions_updated_at"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."update_user_push_subscriptions_updated_at"() TO "service_role";
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+GRANT ALL ON TABLE "public"."public_keys" TO "anon";
+GRANT ALL ON TABLE "public"."public_keys" TO "authenticated";
+GRANT ALL ON TABLE "public"."public_keys" TO "service_role";
 
 
 
@@ -1103,15 +1195,15 @@ GRANT ALL ON TABLE "public"."rate_limits" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "public"."user_push_subscriptions" TO "anon";
+GRANT ALL ON TABLE "public"."user_push_subscriptions" TO "authenticated";
+GRANT ALL ON TABLE "public"."user_push_subscriptions" TO "service_role";
+
+
+
 GRANT ALL ON TABLE "public"."users" TO "anon";
 GRANT ALL ON TABLE "public"."users" TO "authenticated";
 GRANT ALL ON TABLE "public"."users" TO "service_role";
-
-
-
-
-
-
 
 
 
@@ -1139,30 +1231,6 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TAB
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "anon";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "authenticated";
 ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "service_role";
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

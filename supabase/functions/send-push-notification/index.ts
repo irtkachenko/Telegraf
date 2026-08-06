@@ -112,11 +112,11 @@ serve(async (req) => {
     // Get sender's info for notification
     const { data: sender, error: senderError } = await supabase
       .from('users')
-      .select('full_name, username')
+      .select('name')
       .eq('id', senderId)
       .single()
 
-    const senderName = sender?.full_name || sender?.username || 'Користувач'
+    const senderName = sender?.name || 'Користувач'
 
     // Create short notification text (first 100 chars)
     const shortContent = content.length > 100 ? content.substring(0, 97) + '...' : content
