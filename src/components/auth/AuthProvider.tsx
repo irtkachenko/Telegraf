@@ -17,6 +17,15 @@ import { UserUtils } from '@/types/auth';
 
 export { useSupabaseAuth } from './auth-context';
 
+// Singleton pattern to prevent multiple client instances during Fast Refresh
+let supabaseInstance: ReturnType<typeof createClient> | null = null;
+const getSupabaseClient = () => {
+  if (!supabaseInstance) {
+    supabaseInstance = createClient();
+  }
+  return supabaseInstance;
+};
+
 async function fetchDbProfile(
   supabase: ReturnType<typeof createClient>,
   supabaseUser: SupabaseUser,
@@ -85,7 +94,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   const [supabaseUser, setSupabaseUser] = useState<SupabaseUser | null>(null);
   const [user, setUser] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
-  const [supabase] = useState(() => createClient());
+  const supabase = useMemo(() => getSupabaseClient(), []);
 
   const normalizeUser = useCallback(
     async (supabaseUser: SupabaseUser | null) => {
@@ -119,9 +128,8 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     async (event: AuthChangeEvent, session: Session | null) => {
       console.log('[Auth] Auth state changed:', event, session?.user?.email || 'null');
 
-      if (event === 'INITIAL_SESSION') {
-        setLoading(false);
-      }
+      // Always set loading to false on any auth state change
+      setLoading(false);
 
       const currentUser = session?.user ?? null;
       setSupabaseUser(currentUser);
@@ -165,8 +173,9 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
 
         if (error) {
           console.log('[Auth] Auth init error:', error.message);
+          setLoading(false); // Always stop loading on error
+          
           if (error.status === 400 || error.status === 401) {
-            setLoading(false);
             return;
           }
 
@@ -175,7 +184,6 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
             'AuthProvider',
             { enableToast: false },
           );
-          setLoading(false);
         } else {
           console.log('[Auth] Auth init success, user:', user?.email || 'null');
           await handleAuthStateChange('INITIAL_SESSION', user ? ({ user } as Session) : null);
