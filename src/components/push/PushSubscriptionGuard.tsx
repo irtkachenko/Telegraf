@@ -77,7 +77,7 @@ export default function PushSubscriptionGuard() {
         </h2>
 
         <p className="mt-3 text-sm leading-6 text-gray-400">
-          У встановленому додатку Telegraf push-сповіщення обов'язкові, щоб ви не пропускали нові повідомлення.
+          У встановленому додатку Telegraf push-сповіщення обов&rsquo;язкові, щоб ви не пропускали нові повідомлення.
         </p>
 
         {isBrowserIncompatible && (

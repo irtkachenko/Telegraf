@@ -110,5 +110,5 @@ export function useChatsRealtime(user: User | null) {
         channelRef.current = null;
       }
     };
-  }, [user?.id, queryClient]);
+  }, [user?.id, user, queryClient]);
 }

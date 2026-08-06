@@ -77,13 +77,13 @@ export default function MessageMediaGrid({ items, onMediaSettled }: MessageMedia
         setMediaState(cacheKey, { isLoading: false, hasError: true });
       }
     });
-  }, [items, getUrl, urlCache, setUrl, addFailedUrl, removeFailedUrl, failedUrls, setMediaState]);
+  }, [items, getUrl, urlCache, mediaStates, setUrl, addFailedUrl, removeFailedUrl, failedUrls, setMediaState]);
 
   // Process items with cached URLs
   const processedItems = useMemo(() => {
     if (!items || items.length === 0) return [];
     return items.map((item) => {
-      const { cacheKey, itemUrl, isLoading } = getState(urlCache, mediaStates, failedUrls, item);
+      const { itemUrl, isLoading } = getState(urlCache, mediaStates, failedUrls, item);
       return { ...item, processedUrl: itemUrl, _isLoading: isLoading } as AttachmentWithUrl & { _isLoading: boolean };
     });
   }, [items, urlCache, mediaStates, failedUrls]);

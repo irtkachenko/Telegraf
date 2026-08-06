@@ -4,7 +4,7 @@ import type { InfiniteData } from '@tanstack/react-query';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
 import { useSharedSecret } from '@/hooks/keys';
-import type { Attachment, Message } from '@/types';
+import type { Message } from '@/types';
 
 /**
  * Спроба розшифрувати зашифрований вміст повідомлення.
@@ -23,22 +23,6 @@ async function tryDecryptMessageContent(
   }
 }
 
-/**
- * Спроба розшифрувати метадані файлу (назву, тип, ключ).
- */
-async function tryDecryptFileMetadata(
-  encMetadata: string,
-  encIv: string,
-  sharedSecret: CryptoKey,
-): Promise<{ name: string; type: string } | null> {
-  try {
-    const { decryptFileAttachment } = await import('@/services');
-    const result = await decryptFileAttachment(sharedSecret, new Blob(), encMetadata, encIv);
-    return { name: result.name, type: result.type };
-  } catch {
-    return null;
-  }
-}
 
 /**
  * Хук для дешифрування повідомлень у чаті.

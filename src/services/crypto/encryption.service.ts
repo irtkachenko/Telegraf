@@ -11,7 +11,6 @@ import {
   encryptFileMetadata,
   decryptFileMetadata,
 } from '@/lib/crypto';
-import type { Attachment } from '@/types';
 
 // ──────────────────────────────────────────────
 // Шифрування тексту повідомлення

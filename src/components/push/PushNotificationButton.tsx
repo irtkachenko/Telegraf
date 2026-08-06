@@ -14,8 +14,6 @@ export function PushNotificationButton({ variant = 'navbar' }: PushNotificationB
     isSubscribing,
     isUnsubscribing,
     pushSupported,
-    browserSupportsPush,
-    hasVapid,
     subscribe,
     unsubscribe,
   } = usePushNotifications();

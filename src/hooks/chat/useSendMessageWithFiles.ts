@@ -7,15 +7,13 @@ import { useSupabaseAuth } from '@/components/auth/AuthProvider';
 import { useStorageLimits } from '@/hooks/useDynamicStorageConfig';
 import { extractStorageRef, type StorageRef } from '@/lib/storage-utils';
 import {
-  encryptMessageContent,
-  encryptFileAttachment,
   messagesApi,
   storageApi,
   uploadFileOptimized,
   uploadEncryptedFileOptimized,
 } from '@/services';
 import { handleError } from '@/shared/lib/error-handler';
-import { AuthError, NetworkError, ValidationError } from '@/shared/lib/errors';
+import { AuthError, ValidationError } from '@/shared/lib/errors';
 import type { Attachment, Message } from '@/types';
 
 export interface PendingAttachment {
