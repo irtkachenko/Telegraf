@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 export default function UpdateChecker({ children }: { children: React.ReactNode }) {
-  const [currentVersion, setCurrentVersion] = useState<string | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
+  const currentVersionRef = useRef<string | null>(null);
 
   useEffect(() => {
     const checkVersion = async () => {
@@ -12,14 +12,14 @@ export default function UpdateChecker({ children }: { children: React.ReactNode 
         const res = await fetch('/api/version');
         const data = await res.json();
         
-        if (currentVersion && data.version !== currentVersion) {
+        if (currentVersionRef.current && data.version !== currentVersionRef.current) {
           setIsUpdating(true);
           setTimeout(() => {
             window.location.reload();
           }, 300 + Math.random() * 200);
         }
         
-        setCurrentVersion(data.version);
+        currentVersionRef.current = data.version;
       } catch (error) {
         console.error('Failed to check version:', error);
       }
@@ -34,7 +34,7 @@ export default function UpdateChecker({ children }: { children: React.ReactNode 
       window.removeEventListener('focus', checkVersion);
       window.removeEventListener('online', checkVersion);
     };
-  }, [currentVersion]);
+  }, []);
 
   if (isUpdating) {
     return (
