@@ -9,8 +9,12 @@ import { pushApi, type PushSubscriptionPayload } from '@/services/push/push.serv
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
 let didWarnMissingVapidKey = false;
 
+function hasVapidKey(): boolean {
+  return !!VAPID_PUBLIC_KEY;
+}
+
 function hasPushConfig(): boolean {
-  if (VAPID_PUBLIC_KEY) return true;
+  if (hasVapidKey()) return true;
 
   if (!didWarnMissingVapidKey && typeof window !== 'undefined') {
     console.warn('NEXT_PUBLIC_VAPID_PUBLIC_KEY is not set. Push notifications are disabled.');
@@ -20,14 +24,25 @@ function hasPushConfig(): boolean {
   return false;
 }
 
-function isPushSupported(): boolean {
+/**
+ * Checks if the browser supports the Push API (regardless of configuration).
+ * This is a browser capability check only.
+ */
+function isPushAPISupported(): boolean {
   return (
     typeof window !== 'undefined' &&
-    hasPushConfig() &&
     'PushManager' in window &&
     'serviceWorker' in navigator &&
     'Notification' in window
   );
+}
+
+/**
+ * Checks if push notifications can actually be used.
+ * Requires both browser support AND valid VAPID configuration.
+ */
+function canUsePush(): boolean {
+  return isPushAPISupported() && hasPushConfig();
 }
 
 async function getPushRegistration(): Promise<ServiceWorkerRegistration> {
@@ -51,21 +66,21 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
 async function createBrowserSubscription(
   registration: ServiceWorkerRegistration,
 ): Promise<PushSubscriptionPayload | null> {
-  if (!('PushManager' in window)) return null;
+  if (!isPushAPISupported()) return null;
 
   const existing = await registration.pushManager.getSubscription();
   if (existing) {
     return existing.toJSON() as unknown as PushSubscriptionPayload;
   }
 
-  if (!VAPID_PUBLIC_KEY) {
+  if (!hasVapidKey()) {
     console.warn('NEXT_PUBLIC_VAPID_PUBLIC_KEY is not set. Push notifications are disabled.');
     return null;
   }
 
   const subscription = await registration.pushManager.subscribe({
     userVisibleOnly: true,
-    applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+    applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY!),
   });
 
   return subscription.toJSON() as unknown as PushSubscriptionPayload;
@@ -82,7 +97,11 @@ export function usePushNotifications() {
   const { user } = useSupabaseAuth();
   const queryClient = useQueryClient();
   const isStandalonePwa = typeof window !== 'undefined' && isStandaloneMode();
-  const pushSupported = isPushSupported();
+  
+  // Separate checks for better error handling
+  const browserSupportsPush = isPushAPISupported();
+  const hasVapid = hasVapidKey();
+  const pushSupported = canUsePush();
 
   const {
     data: isSubscribed,
@@ -219,6 +238,9 @@ export function usePushNotifications() {
     isUnsubscribing: unsubscribeMutation.isPending,
     isSupported: pushSupported,
     pushSupported,
+    // Expose separate states for better UI feedback
+    browserSupportsPush,
+    hasVapid,
     subscribe: useCallback(() => subscribeMutation.mutateAsync(), [subscribeMutation]),
     unsubscribe: useCallback(() => unsubscribeMutation.mutateAsync(), [unsubscribeMutation]),
   };

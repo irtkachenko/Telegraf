@@ -14,14 +14,19 @@ export function PushNotificationButton({ variant = 'navbar' }: PushNotificationB
     isSubscribing,
     isUnsubscribing,
     pushSupported,
+    browserSupportsPush,
+    hasVapid,
     subscribe,
     unsubscribe,
   } = usePushNotifications();
 
   const isLoading = isCheckingSubscription || isSubscribing || isUnsubscribing;
 
-  // Hide the button entirely if the browser doesn't support Push API
+  // Hide the button if push is not fully supported (needs browser support + VAPID key)
   if (!pushSupported) return null;
+  
+  // Show a different state if the browser supports Push API but VAPID key is missing
+  // This allows showing a "not configured" state instead of hiding completely
 
   const handleClick = async () => {
     if (isSubscribed) {

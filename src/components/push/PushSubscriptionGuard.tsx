@@ -13,11 +13,17 @@ export default function PushSubscriptionGuard() {
     isCheckingSubscription,
     isSubscribing,
     pushSupported,
+    browserSupportsPush,
+    hasVapid,
     subscribe,
   } = usePushNotifications();
   const [isInstalledApp] = useState(() => isStandaloneMode());
   const [subscribeError, setSubscribeError] = useState<string | null>(null);
   const autoSubscribeAttemptedRef = useRef(false);
+
+  // Determine the actual reason why push is not supported
+  const isBrowserIncompatible = isInstalledApp && !browserSupportsPush;
+  const isMissingVapidKey = isInstalledApp && browserSupportsPush && !hasVapid;
 
   useEffect(() => {
     if (
@@ -71,12 +77,18 @@ export default function PushSubscriptionGuard() {
         </h2>
 
         <p className="mt-3 text-sm leading-6 text-gray-400">
-          У встановленому додатку Telegraf push-сповіщення обов&apos;язкові, щоб ви не пропускали нові повідомлення.
+          У встановленому додатку Telegraf push-сповіщення обов'язкові, щоб ви не пропускали нові повідомлення.
         </p>
 
-        {!pushSupported && (
+        {isBrowserIncompatible && (
           <p className="mt-4 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
             Цей браузер або пристрій не підтримує push-сповіщення для PWA.
+          </p>
+        )}
+
+        {isMissingVapidKey && (
+          <p className="mt-4 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+            Пуш-сповіщення не налаштовані. Зверніться до адміністратора.
           </p>
         )}
 
