@@ -8,6 +8,7 @@ export default function ChatEmptyPage() {
 
   const handleClick = () => {
     router.push('/chat');
+    window.dispatchEvent(new Event('open-mobile-sidebar'));
   };
 
   return (

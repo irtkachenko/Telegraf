@@ -42,6 +42,15 @@ export default function ChatLayoutWrapper({ children, sidebar, user }: ChatLayou
     return () => window.removeEventListener('close-mobile-sidebar', handleClose);
   }, [handleClose]);
 
+  const handleOpenSidebar = useCallback(() => {
+    setIsSidebarOpen(true);
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener('open-mobile-sidebar', handleOpenSidebar);
+    return () => window.removeEventListener('open-mobile-sidebar', handleOpenSidebar);
+  }, [handleOpenSidebar]);
+
   const toggleSidebar = () => setIsSidebarOpen((prev) => !prev);
 
   // On the landing page (root path) when not logged in, render children directly
