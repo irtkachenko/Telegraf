@@ -119,18 +119,27 @@ serve(async (req) => {
     const senderName = sender?.name || 'Користувач'
 
     // Create short notification text (first 100 chars)
-    const shortContent = content.length > 100 ? content.substring(0, 97) + '...' : content
+    const shortContent = content ? (content.length > 100 ? content.substring(0, 97) + '...' : content) : 'Нове повідомлення'
 
-    // Prepare notification payload
+    // 🚨 1. Покращений Payload: передаємо chatId обов'язково
     const notificationPayload = JSON.stringify({
       title: `${senderName}`,
-      body: shortContent || 'Нове повідомлення',
+      body: shortContent,
       url: `/chat/${chatId}`,
+      chatId: chatId, // 👈 Потрібно для Service Worker для групування
     })
+
+    // 🚨 2. Параметри відправки Push з високим пріоритетом
+    const pushOptions = {
+      headers: {
+        'Urgency': 'high', // 👈 КРИТИЧНО для вилітаючих плашок (Heads-up)
+      },
+      TTL: 86400, // 24 години
+    }
 
     // Send push notification
     try {
-      await webpush.sendNotification(subscription, notificationPayload)
+      await webpush.sendNotification(subscription, notificationPayload, pushOptions)
       console.log(`Push notification sent to user ${recipientId} for message ${messageId}`)
     } catch (pushError) {
       // If subscription is invalid, remove it
@@ -145,7 +154,6 @@ serve(async (req) => {
         }
       }
       console.error('Push send failed:', pushError)
-      // Don't fail the request, just log the error
     }
 
     return new Response(

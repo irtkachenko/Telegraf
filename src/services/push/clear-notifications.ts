@@ -1,5 +1,7 @@
 'use client';
 
+import { resetBadge } from '@/components/layout/PwaRegister';
+
 /**
  * Closes all active push notifications via the Service Worker and resets
  * the PWA app badge counter (navigator.setAppBadge / clearAppBadge).
@@ -14,19 +16,8 @@ export async function clearPushNotifications(): Promise<void> {
   }
 
   // 1. Reset the App Badge API (Badging API) if supported.
-  if ('setAppBadge' in navigator) {
-    try {
-      await navigator.setAppBadge(0);
-    } catch {
-      // Ignore – badge API may not be available in all contexts
-    }
-  } else if ('clearAppBadge' in navigator) {
-    try {
-      await (navigator as unknown as { clearAppBadge: () => Promise<void> }).clearAppBadge();
-    } catch {
-      // Ignore
-    }
-  }
+  //    Uses the centralized resetBadge() which also persists count to localStorage.
+  resetBadge();
 
   // 2. Ask the Service Worker to close every active push notification.
   //    On Android this resets the system unread-notification counter that
@@ -35,6 +26,8 @@ export async function clearPushNotifications(): Promise<void> {
     try {
       const registration = await navigator.serviceWorker.ready;
       registration.active?.postMessage({ type: 'CLEAR_NOTIFICATIONS' });
+      // Notify the client (and other tabs) to reset their badge counter state
+      registration.active?.postMessage({ type: 'RESET_BADGE' });
     } catch {
       // Ignore – service worker may not be ready/available
     }

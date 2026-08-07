@@ -1,6 +1,6 @@
 /* Telegraf Service Worker - PWA Shell + Safe Caching + Web Push */
 
-const CACHE_NAME = 'telegraf-cache-v3';
+const CACHE_NAME = 'telegraf-cache-v4'; // Піднято версію для примусового оновлення
 
 // Файли, які гарантовано кешуємо при інсталяції Service Worker
 const STATIC_ASSETS = [
@@ -48,10 +48,32 @@ self.addEventListener('message', (event) => {
     self.skipWaiting();
   }
 
-  // Очищення всіх активних push-сповіщень (обнуляє лічильник на іконці PWA)
+  // Очищення всіх активних push-сповіщень та скидання badge у фоні
   if (event.data && event.data.type === 'CLEAR_NOTIFICATIONS') {
-    self.registration.getNotifications().then((notifications) => {
-      notifications.forEach((notification) => notification.close());
+    event.waitUntil(
+      self.registration.getNotifications().then((notifications) => {
+        notifications.forEach((notification) => notification.close());
+        if ('clearAppBadge' in navigator) {
+          navigator.clearAppBadge().catch(() => {});
+        } else if ('setAppBadge' in navigator) {
+          navigator.setAppBadge(0).catch(() => {});
+        }
+      })
+    );
+  }
+
+  // Скидання badge до 0 — клієнт повідомляє про закриття сповіщень чи читання
+  if (event.data && event.data.type === 'RESET_BADGE') {
+    if ('clearAppBadge' in navigator) {
+      navigator.clearAppBadge().catch(() => {});
+    } else if ('setAppBadge' in navigator) {
+      navigator.setAppBadge(0).catch(() => {});
+    }
+
+    self.clients.matchAll({ type: 'window' }).then((clients) => {
+      clients.forEach((client) => {
+        client.postMessage({ type: 'RESET_BADGE' });
+      });
     });
   }
 });
@@ -70,12 +92,6 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return;
 
   // 🚨 ЗОНА БЕЗПЕКИ: Повний обхід Service Worker для динамічного контенту!
-  // Якщо ми робимо просто `return;` без `event.respondWith()`, браузер 
-  // обробляє запити через стандартну мережу. Це 100% захищає від білих/чорних екранів при F5.
-  
-  // - Навігація (перехід по сторінках / оновлення F5 / HTML)
-  // - API роути Next.js та Supabase
-  // - Runtime бандли Next.js (файли з /_next/)
   if (
     request.mode === 'navigate' ||
     url.pathname.startsWith('/_next/') ||
@@ -84,7 +100,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Кешуємо тільки ТІЛЬКИ безпечні статичні файли (зображення, шрифти, маніфест)
+  // Кешуємо ТІЛЬКИ безпечні статичні файли (зображення, шрифти, маніфест)
   const isSafeStaticAsset =
     request.destination === 'image' ||
     request.destination === 'font' ||
@@ -100,7 +116,6 @@ self.addEventListener('fetch', (event) => {
       if (cached) return cached;
 
       return fetch(request).then((response) => {
-        // Зберігаємо в кеш тільки успішні відповіді
         if (response && response.status === 200 && response.type === 'basic') {
           const responseToCache = response.clone();
           caches.open(CACHE_NAME).then((cache) => {
@@ -110,7 +125,6 @@ self.addEventListener('fetch', (event) => {
         return response;
       }).catch((err) => {
         console.warn('[SW] Static asset fetch failed:', err);
-        // Повертаємо пусту відповідь замість помилки промісу
         return new Response('', { status: 404, statusText: 'Not Found' });
       });
     })
@@ -130,28 +144,51 @@ self.addEventListener('push', (event) => {
     // Якщо прийшов не JSON, використовуємо дефолтний фолбек
   }
 
-  // Групування сповіщень по чатах для заміни/оновлення існуючих
   const tag = data.chatId ? 'chat-' + data.chatId : 'general';
 
-  // Інкремент лічильника badge при отриманні нового пуша (вбудовуємо setAppBadge у SW)
-  if ('setAppBadge' in self.registration) {
-    // setAppBadge не доступний у SW контексті, використовуємо clients + postMessage
-  }
+  // Якщо додаток відкритий у фокусі/вкладці — повідомляємо клієнт
+  self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+    clients.forEach((client) => {
+      client.postMessage({
+        type: 'INCREMENT_BADGE',
+        chatId: data.chatId ?? null,
+      });
+    });
+  });
 
+  // Опції сповіщення з високим пріоритетом для появи вилітаючої плашки (Heads-Up)
   const options = {
     body: data.body,
     icon: '/icons/android/launchericon-192x192.png',
     badge: '/icons/android/launchericon-192x192.png',
     data: { url: data.url, chatId: data.chatId },
-    vibrate: [100, 50, 100],
+    vibrate: [200, 100, 200], // Агресивніший паттерн вібрації
     renotify: true,
     tag: tag,
+    priority: 'high',          // Високий пріоритет для плашки
+    urgency: 'high',           // Підказка браузеру про терміновість
+    timestamp: Date.now(),
   };
 
-  event.waitUntil(self.registration.showNotification(data.title, options));
+  event.waitUntil(
+    (async () => {
+      // 1. Показуємо повідомлення
+      await self.registration.showNotification(data.title, options);
+
+      // 2. Рахуємо реально кількість активних сповіщень у шторці і ставимо точний badge
+      if ('setAppBadge' in navigator) {
+        try {
+          const activeNotifications = await self.registration.getNotifications();
+          await navigator.setAppBadge(activeNotifications.length);
+        } catch {
+          // Ігноруємо помилки Badging API
+        }
+      }
+    })()
+  );
 });
 
-// 5. Notification Click Event: Клік по пуш-повідомленню
+// 5. Notification Click Event: Клік по пуш-сповіщенню
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
@@ -159,22 +196,34 @@ self.addEventListener('notificationclick', (event) => {
   const normalizedUrl = new URL(targetUrl, self.location.origin).href;
 
   event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      // 1. Якщо ХОЧ БА Д ОДНА вкладка PWA вже відкрита (на будь-якій сторінці):
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async (clientList) => {
+      // Оновлюємо бейдж після закриття/кліку по сповіщенню
+      if ('setAppBadge' in navigator) {
+        try {
+          const remaining = await self.registration.getNotifications();
+          if (remaining.length > 0) {
+            await navigator.setAppBadge(remaining.length);
+          } else if ('clearAppBadge' in navigator) {
+            await navigator.clearAppBadge();
+          } else {
+            await navigator.setAppBadge(0);
+          }
+        } catch {}
+      }
+
+      // 1. Якщо ХОЧ БИ ОДНА вкладка PWA вже відкрита:
       for (const client of clientList) {
         if ('focus' in client) {
-          // Надсилаємо сигнал фронтенду переключити роут на потрібний чат
           client.postMessage({
             type: 'NAVIGATE_TO_CHAT',
             url: normalizedUrl,
             chatId: event.notification.data?.chatId ?? null,
           });
-          // Фокусуємо вже відкрите вікно
           return client.focus();
         }
       }
-      
-      // 2. Якщо PWA повністю закрите — відкриваємо нову вкладку одразу за адресою чату
+
+      // 2. Якщо PWA повністю закрите:
       return self.clients.openWindow(normalizedUrl);
     })
   );
