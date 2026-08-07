@@ -67,10 +67,10 @@ export default async function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} ${tektur.variable} ${chakraPetch.variable} antialiased bg-black text-white font-tektur`}
         suppressHydrationWarning
       >
-        <PwaRegister />
         <UpdateChecker>
           <Providers>
             <AuthProvider>
+              <PwaRegister />
               <InAppBanner />
               <GlobalCleanup>
                 <ChatLayoutWrapper
