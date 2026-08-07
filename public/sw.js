@@ -42,10 +42,17 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// 2.1 Message Event: Обробка запиту на негайне оновлення від клієнта
+// 2.1 Message Event: Обробка запитів від клієнта
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
+  }
+
+  // Очищення всіх активних push-сповіщень (обнуляє лічильник на іконці PWA)
+  if (event.data && event.data.type === 'CLEAR_NOTIFICATIONS') {
+    self.registration.getNotifications().then((notifications) => {
+      notifications.forEach((notification) => notification.close());
+    });
   }
 });
 

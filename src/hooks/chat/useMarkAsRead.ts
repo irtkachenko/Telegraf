@@ -6,6 +6,7 @@ import { useSupabaseAuth } from '@/components/auth/AuthProvider';
 import { handleError } from '@/shared/lib/error-handler';
 import { AuthError, NetworkError } from '@/shared/lib/errors';
 import type { FullChat } from '@/types';
+import { clearPushNotifications } from '@/services/push';
 import { mapChatsInfinite } from './chats-cache';
 
 // Validation schema
@@ -100,6 +101,9 @@ export function useMarkAsRead() {
         }
         return { ...old, recipient_last_read_id: messageId };
       });
+
+      // Clear push notifications and reset PWA badge counter on read
+      void clearPushNotifications();
     },
   });
 }
