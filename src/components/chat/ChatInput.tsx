@@ -195,11 +195,11 @@ export default function ChatInput({
             onKeyDown={handleKeyDown}
             placeholder="Напишіть повідомлення..."
             className={cn(
-              'w-full bg-transparent border-none outline-none focus:outline-none focus:ring-0 px-4 pt-3 pb-2 text-[15px] text-white placeholder:text-gray-500',
+              'w-full bg-transparent border-none outline-none focus:outline-none focus:ring-0 px-4 pt-3.5 pb-2.5 text-[15px] text-white placeholder:text-gray-500',
               'resize-none overflow-y-auto leading-[1.5]',
               'scrollbar-hide',
             )}
-            style={{ minHeight: '44px' }}
+            style={{ minHeight: '56px' }}
           />
         </div>
 
@@ -228,16 +228,16 @@ export default function ChatInput({
               type="submit"
               disabled={isSubmitDisabled}
               className={cn(
-                'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-200 cursor-pointer shrink-0',
+                'flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 cursor-pointer shrink-0',
                 isSubmitDisabled
                   ? 'bg-white/5 text-gray-500 cursor-not-allowed border border-transparent'
                   : 'bg-[#5e6ad2] text-white hover:bg-[#4e5ac2] hover:shadow-[0_0_12px_rgba(94,106,210,0.3)] border border-white/10 active:scale-[0.98]'
               )}
             >
-              <Send size={11} className={sendMessageWithFiles.isPending ? 'animate-pulse' : ''} />
+              <Send size={14} className={sendMessageWithFiles.isPending ? 'animate-pulse' : ''} />
               <span>Надіслати</span>
               <span className={cn(
-                'text-[8px] px-1 py-0.5 rounded font-normal',
+                'text-[10px] px-1.5 py-0.5 rounded font-normal',
                 isSubmitDisabled ? 'bg-white/5 text-gray-600' : 'bg-white/10 text-[#8d96e9]'
               )}>
                 ↵
