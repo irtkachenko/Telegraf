@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 const CHECK_INTERVAL = 5 * 60 * 1000; // 5 хвилин
+const VERSION_STORAGE_KEY = 'telegraf:last-known-version';
 
 export default function UpdateChecker({ children }: { children: React.ReactNode }) {
   const [isUpdating, setIsUpdating] = useState(false);
@@ -18,12 +19,28 @@ export default function UpdateChecker({ children }: { children: React.ReactNode 
   };
 
   useEffect(() => {
+    // On mount, load the last known version from sessionStorage
+    // to prevent infinite reload loops (version is set BEFORE reload)
+    try {
+      const stored = sessionStorage.getItem(VERSION_STORAGE_KEY);
+      if (stored) currentVersionRef.current = stored;
+    } catch {
+      // Ignore
+    }
+
     const checkVersion = async () => {
       try {
         const res = await fetch('/api/version', { cache: 'no-store' });
+        if (!res.ok) return;
         const data = await res.json();
 
         if (currentVersionRef.current && data.version !== currentVersionRef.current) {
+          // Save new version BEFORE reload so we don't loop
+          try {
+            sessionStorage.setItem(VERSION_STORAGE_KEY, data.version);
+          } catch {
+            // Ignore
+          }
           triggerReload();
         }
 
@@ -33,20 +50,39 @@ export default function UpdateChecker({ children }: { children: React.ReactNode 
       }
     };
 
-    // 1. Перевірка версії при старті
-    checkVersion();
+    /** Force the browser to check for a new Service Worker script. */
+    const forceSwUpdate = async () => {
+      if (!('serviceWorker' in navigator)) return;
+      try {
+        const registration = await navigator.serviceWorker.getRegistration('/sw.js');
+        if (registration) {
+          await registration.update();
+        }
+      } catch {
+        // Ignore — can fail when offline
+      }
+    };
+
+    const checkAll = async () => {
+      await Promise.all([checkVersion(), forceSwUpdate()]);
+    };
+
+    // 1. Перевірка при старті
+    void checkAll();
 
     // 2. Періодична перевірка (важливо для PWA, коли додаток у фоновому режимі)
-    const intervalId = setInterval(checkVersion, CHECK_INTERVAL);
+    const intervalId = setInterval(checkAll, CHECK_INTERVAL);
 
     // 3. Перевірка при фокусі та поверненні онлайн
-    window.addEventListener('focus', checkVersion);
-    window.addEventListener('online', checkVersion);
+    const handleFocus = () => void checkAll();
+    const handleOnline = () => void checkAll();
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('online', handleOnline);
 
     // 4. Перевірка при вході в додаток (вкладка стає видимою — юзер повернувся в PWA)
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        checkVersion();
+        void checkAll();
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -54,7 +90,7 @@ export default function UpdateChecker({ children }: { children: React.ReactNode 
     // 5. Перевірка при поверненні з bfcache (мобільні браузери)
     const handlePageShow = (event: PageTransitionEvent) => {
       if (event.persisted) {
-        checkVersion();
+        void checkAll();
       }
     };
     window.addEventListener('pageshow', handlePageShow);
@@ -76,8 +112,8 @@ export default function UpdateChecker({ children }: { children: React.ReactNode 
 
     return () => {
       clearInterval(intervalId);
-      window.removeEventListener('focus', checkVersion);
-      window.removeEventListener('online', checkVersion);
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('online', handleOnline);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('pageshow', handlePageShow);
       navigator.serviceWorker?.removeEventListener('controllerchange', handleControllerChange);

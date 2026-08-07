@@ -108,8 +108,27 @@ async function updateLastSeen(): Promise<void> {
 
 function handleVisibilityChange(): void {
   if (document.visibilityState === 'visible') {
-    handleUserActivity();
+    // User returned — immediately re-track as online
+    const manager = presenceSingleton.manager;
+    if (manager && manager.channel && manager.userId) {
+      updateActivity(manager);
+      if (!manager.heartbeatInterval) {
+        startHeartbeat(manager);
+      }
+      manager.channel.track({
+        user_id: manager.userId,
+        online_at: new Date().toISOString(),
+      });
+    } else {
+      handleUserActivity();
+    }
   } else {
+    // User left (minimized, switched tab, locked screen) — go offline immediately
+    const manager = presenceSingleton.manager;
+    if (manager && manager.channel) {
+      stopHeartbeat(manager);
+      manager.channel.untrack();
+    }
     void updateLastSeen();
   }
 }
@@ -139,8 +158,13 @@ function handleUserActivity(): void {
 }
 
 function handleBlur(): void {
-  // On blur we intentionally do nothing; presence should remain online
-  // until the user is inactive for INACTIVITY_TIMEOUT.
+  // User switched to another window/app — go offline immediately
+  const manager = presenceSingleton.manager;
+  if (manager && manager.channel) {
+    stopHeartbeat(manager);
+    manager.channel.untrack();
+  }
+  void updateLastSeen();
 }
 
 function handleFocus(): void {

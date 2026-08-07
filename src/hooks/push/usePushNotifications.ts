@@ -63,7 +63,37 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
   return outputArray;
 }
 
-async function createBrowserSubscription(
+/**
+ * Creates a fresh browser PushSubscription, unsubscribing from any existing
+ * one first to guarantee a valid endpoint.
+ */
+async function createFreshBrowserSubscription(
+  registration: ServiceWorkerRegistration,
+): Promise<PushSubscriptionPayload | null> {
+  if (!isPushAPISupported() || !hasVapidKey()) return null;
+
+  // Unsubscribe from any existing subscription to force a fresh endpoint
+  const existing = await registration.pushManager.getSubscription();
+  if (existing) {
+    try {
+      await existing.unsubscribe();
+    } catch {
+      // Ignore — old sub may already be invalid
+    }
+  }
+
+  const subscription = await registration.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY!),
+  });
+
+  return subscription.toJSON() as unknown as PushSubscriptionPayload;
+}
+
+/**
+ * Gets the current browser subscription or creates a new one.
+ */
+async function getOrCreateBrowserSubscription(
   registration: ServiceWorkerRegistration,
 ): Promise<PushSubscriptionPayload | null> {
   if (!isPushAPISupported()) return null;
@@ -92,6 +122,7 @@ async function createBrowserSubscription(
  * - Checks browser support and permission
  * - Creates a browser PushSubscription with VAPID keys
  * - Syncs the subscription with the Supabase backend
+ * - Auto-resubscribes if the browser subscription or server record is missing/stale
  */
 export function usePushNotifications() {
   const { user } = useSupabaseAuth();
@@ -116,12 +147,45 @@ export function usePushNotifications() {
       if (Notification.permission !== 'granted') return false;
 
       const registration = await navigator.serviceWorker.getRegistration('/sw.js');
-      const browserSubscription = await registration?.pushManager.getSubscription();
+      if (!registration) return false;
 
-      if (!browserSubscription) return false;
+      const browserSubscription = await registration.pushManager.getSubscription();
+      const hasServerSub = await pushApi.isSubscribed().catch(() => false);
 
-      // Check if there's an active server-side subscription too.
-      return pushApi.isSubscribed();
+      // ── Auto-resubscribe logic ──
+      // Case 1: Browser has subscription but server does not → re-sync to server
+      if (browserSubscription && !hasServerSub) {
+        try {
+          const payload = browserSubscription.toJSON() as unknown as PushSubscriptionPayload;
+          if (payload?.endpoint) {
+            await pushApi.subscribe(payload);
+            return true;
+          }
+        } catch {
+          // Failed to sync — treat as not subscribed
+          return false;
+        }
+      }
+
+      // Case 2: Server has subscription but browser does not → re-create browser sub
+      if (!browserSubscription && hasServerSub) {
+        try {
+          const freshReg = await navigator.serviceWorker.ready;
+          const newSub = await getOrCreateBrowserSubscription(freshReg);
+          if (newSub?.endpoint) {
+            await pushApi.subscribe(newSub);
+            return true;
+          }
+        } catch {
+          return false;
+        }
+      }
+
+      // Case 3: Neither exists
+      if (!browserSubscription && !hasServerSub) return false;
+
+      // Case 4: Both exist — good state
+      return true;
     },
     enabled: !!user?.id && isStandalonePwa && pushSupported,
     retry: false,
@@ -143,7 +207,8 @@ export function usePushNotifications() {
       }
 
       const registration = await getPushRegistration();
-      const subscription = await createBrowserSubscription(registration);
+      // Use createFresh to guarantee a valid, current endpoint
+      const subscription = await createFreshBrowserSubscription(registration);
 
       if (!subscription?.endpoint) {
         return false;

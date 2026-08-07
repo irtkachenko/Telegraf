@@ -50,19 +50,23 @@ export function incrementBadge(): number {
 
 /**
  * Resets the unread badge counter to 0 and clears the PWA icon badge.
+ * Uses clearAppBadge() as primary method, setAppBadge(0) as fallback.
  */
 export function resetBadge(): void {
   setBadgeCount(0);
 
-  if (typeof navigator !== 'undefined' && 'setAppBadge' in navigator) {
+  if (typeof navigator === 'undefined') return;
+
+  // Always try clearAppBadge first — it's the correct API for full reset
+  if ('clearAppBadge' in navigator) {
     try {
-      navigator.setAppBadge(0);
+      (navigator as unknown as { clearAppBadge: () => Promise<void> }).clearAppBadge();
     } catch {
       // Ignore
     }
-  } else if (typeof navigator !== 'undefined' && 'clearAppBadge' in navigator) {
+  } else if ('setAppBadge' in navigator) {
     try {
-      (navigator as unknown as { clearAppBadge: () => Promise<void> }).clearAppBadge();
+      (navigator as unknown as { setAppBadge: (count: number) => Promise<void> }).setAppBadge(0);
     } catch {
       // Ignore
     }
@@ -73,90 +77,101 @@ export default function PwaRegister() {
   const router = useRouter();
 
   useEffect(() => {
-    if ('serviceWorker' in navigator) {
-      const register = async () => {
-        try {
-          if (process.env.NODE_ENV !== 'production') {
-            if ('caches' in window) {
-              const keys = await caches.keys();
-              await Promise.all(
-                keys
-                  .filter((key) => key.startsWith('telegraf-cache-'))
-                  .map((key) => caches.delete(key)),
-              );
-            }
+    if (!('serviceWorker' in navigator)) return;
+
+    let messageHandler: ((event: MessageEvent) => void) | null = null;
+
+    const register = async () => {
+      try {
+        // In development, clear old caches to avoid stale content
+        if (process.env.NODE_ENV !== 'production') {
+          if ('caches' in window) {
+            const keys = await caches.keys();
+            await Promise.all(
+              keys
+                .filter((key) => key.startsWith('telegraf-cache-'))
+                .map((key) => caches.delete(key)),
+            );
           }
-
-          const registration = await navigator.serviceWorker.register('/sw.js');
-
-          // Відстежуємо виявлення нової версії Service Worker
-          registration.addEventListener('updatefound', () => {
-            const newWorker = registration.installing;
-            if (!newWorker) return;
-
-            // Коли новий SW завантажився — надсилаємо SKIP_WAITING,
-            // щоб він активувався негайно (без очікування закриття вкладок)
-            newWorker.addEventListener('statechange', () => {
-              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                newWorker.postMessage({ type: 'SKIP_WAITING' });
-              }
-            });
-          });
-
-          // Обробка повідомлень від Service Worker
-          const handleServiceWorkerMessage = (event: MessageEvent) => {
-            const data = event.data;
-            if (!data || !data.type) return;
-
-            switch (data.type) {
-              case 'NAVIGATE_TO_CHAT':
-                // Глибоке посилання: перехід у конкретний чат
-                if (data.url) {
-                  router.push(data.url);
-                }
-                break;
-
-              case 'INCREMENT_BADGE':
-                // Інкремент лічильника badge при отриманні нового пуш-повідомлення
-                incrementBadge();
-                break;
-
-              case 'RESET_BADGE':
-                // Скидання лічильника badge до 0
-                resetBadge();
-                break;
-
-              case 'CLEAR_NOTIFICATIONS':
-                // Очищення активних сповіщень та скидання badge
-                resetBadge();
-                break;
-
-              case 'NEW_VERSION_ACTIVATED':
-                // Нова версія SW активована — логіка обробки в UpdateChecker
-                break;
-
-              default:
-                break;
-            }
-          };
-
-          navigator.serviceWorker.addEventListener('message', handleServiceWorkerMessage);
-
-          // Під час завантаження сторінки ініціалізуємо badge з localStorage
-          const storedCount = getBadgeCount();
-          if (storedCount > 0 && typeof navigator !== 'undefined' && 'setAppBadge' in navigator) {
-            try {
-              navigator.setAppBadge(storedCount);
-            } catch {
-              // Ignore
-            }
-          }
-        } catch (error) {
-          console.error('Service worker registration failed:', error);
         }
-      };
-      void register();
-    }
+
+        const registration = await navigator.serviceWorker.register('/sw.js');
+
+        // Force check for SW updates on every page load
+        try {
+          await registration.update();
+        } catch {
+          // update() can fail if offline — that's OK
+        }
+
+        // When a new SW is found, tell it to activate immediately
+        registration.addEventListener('updatefound', () => {
+          const newWorker = registration.installing;
+          if (!newWorker) return;
+
+          newWorker.addEventListener('statechange', () => {
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              newWorker.postMessage({ type: 'SKIP_WAITING' });
+            }
+          });
+        });
+
+        // Handle messages from Service Worker
+        messageHandler = (event: MessageEvent) => {
+          const data = event.data;
+          if (!data || !data.type) return;
+
+          switch (data.type) {
+            case 'NAVIGATE_TO_CHAT':
+              if (data.url) {
+                router.push(data.url);
+              }
+              break;
+
+            case 'INCREMENT_BADGE':
+              incrementBadge();
+              break;
+
+            case 'RESET_BADGE':
+            case 'CLEAR_NOTIFICATIONS':
+              resetBadge();
+              break;
+
+            case 'NEW_VERSION_ACTIVATED':
+              // Handled by UpdateChecker
+              break;
+
+            default:
+              break;
+          }
+        };
+
+        navigator.serviceWorker.addEventListener('message', messageHandler);
+
+        // On page load, sync badge from localStorage
+        const storedCount = getBadgeCount();
+        if (storedCount > 0 && 'setAppBadge' in navigator) {
+          try {
+            navigator.setAppBadge(storedCount);
+          } catch {
+            // Ignore
+          }
+        } else if (storedCount === 0) {
+          // Ensure badge is cleared if localStorage says 0
+          resetBadge();
+        }
+      } catch (error) {
+        console.error('Service worker registration failed:', error);
+      }
+    };
+
+    void register();
+
+    return () => {
+      if (messageHandler) {
+        navigator.serviceWorker.removeEventListener('message', messageHandler);
+      }
+    };
   }, [router]);
 
   return null;

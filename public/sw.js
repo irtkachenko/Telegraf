@@ -1,99 +1,159 @@
-const CACHE_NAME = 'telegraf-cache-v5';
+const CACHE_NAME = 'telegraf-cache-v6';
 
-self.addEventListener('install', (event) => {
+// ── Install ──────────────────────────────────────────────
+self.addEventListener('install', () => {
   self.skipWaiting();
 });
 
+// ── Activate ─────────────────────────────────────────────
 self.addEventListener('activate', (event) => {
-  event.waitUntil(clients.claim());
+  event.waitUntil(
+    caches.keys().then((keys) =>
+      Promise.all(
+        keys
+          .filter((key) => key.startsWith('telegraf-cache-') && key !== CACHE_NAME)
+          .map((key) => caches.delete(key)),
+      ),
+    ).then(() => self.clients.claim()),
+  );
 });
 
-// Допоміжна функція для оновлення badge
-async function updateBadgeCount() {
+// ── Badge helpers ────────────────────────────────────────
+async function updateBadgeFromNotifications() {
   try {
     const notifications = await self.registration.getNotifications();
     const count = notifications.length;
-    if ('setAppBadge' in navigator) {
+    if ('setAppBadge' in self.navigator) {
       if (count > 0) {
-        await navigator.setAppBadge(count);
+        await self.navigator.setAppBadge(count);
       } else {
-        await navigator.clearAppBadge();
+        await self.navigator.clearAppBadge();
       }
     }
   } catch (e) {
-    console.error('Error updating badge:', e);
+    console.error('[SW] Error updating badge:', e);
   }
 }
 
-// Обробка вхідного push-сповіщення
+async function clearBadge() {
+  try {
+    if ('clearAppBadge' in self.navigator) {
+      await self.navigator.clearAppBadge();
+    } else if ('setAppBadge' in self.navigator) {
+      await self.navigator.setAppBadge(0);
+    }
+  } catch (e) {
+    console.error('[SW] Error clearing badge:', e);
+  }
+}
+
+/** Broadcast a message to every controlled window/tab. */
+async function broadcastToClients(message) {
+  const windowClients = await self.clients.matchAll({ type: 'window', includeUncontrolled: false });
+  for (const client of windowClients) {
+    client.postMessage(message);
+  }
+}
+
+// ── Push ─────────────────────────────────────────────────
 self.addEventListener('push', (event) => {
   if (!event.data) return;
 
+  let notificationData;
   try {
-    const notificationData = event.data.json();
-
-    const options = {
-      body: notificationData.body || 'Нове повідомлення',
-      icon: '/icon-192.png',
-      badge: '/icon-192.png',
-      data: {
-        url: notificationData.url || '/',
-        chatId: notificationData.chatId
-      },
-      // 🚨 КРИТИЧНІ ПАРАМЕТРИ ДЛЯ ЗВУКУ ТА ВИЛІТАЮЧОЇ ПЛАШКИ (HEADS-UP)
-      tag: `chat-${notificationData.chatId}`, // Тег чату
-      renotify: true,                          // Примусово показувати плашку і видавати звук повторно!
-      vibrate: [200, 100, 200],                // Обов'язково для Android Heads-up
-      requireInteraction: false,
-      priority: 'high'
-    };
-
-    const promiseChain = self.registration
-      .showNotification(notificationData.title || 'Telegraf', options)
-      .then(() => updateBadgeCount());
-
-    event.waitUntil(promiseChain);
+    notificationData = event.data.json();
   } catch (err) {
-    console.error('Error in push event:', err);
+    console.error('[SW] Failed to parse push payload:', err);
+    return;
   }
+
+  const options = {
+    body: notificationData.body || 'Нове повідомлення',
+    icon: '/icons/android/launchericon-192x192.png',
+    badge: '/icons/android/launchericon-96x96.png',
+    data: {
+      url: notificationData.url || '/',
+      chatId: notificationData.chatId,
+    },
+    tag: `chat-${notificationData.chatId}`,
+    renotify: true,
+    vibrate: [200, 100, 200],
+    requireInteraction: false,
+  };
+
+  const promiseChain = self.registration
+    .showNotification(notificationData.title || 'Telegraf', options)
+    .then(() => updateBadgeFromNotifications());
+
+  event.waitUntil(promiseChain);
 });
 
-// Клік по сповіщенню
+// ── Notification click ───────────────────────────────────
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
   const targetUrl = event.notification.data?.url || '/';
 
-  const promiseChain = clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
-    for (let client of windowClients) {
-      if (client.url.includes(self.location.origin) && 'focus' in client) {
-        client.focus();
-        if ('navigate' in client) {
-          client.navigate(targetUrl);
+  const promiseChain = self.clients
+    .matchAll({ type: 'window', includeUncontrolled: true })
+    .then((windowClients) => {
+      for (const client of windowClients) {
+        if (client.url.includes(self.location.origin) && 'focus' in client) {
+          client.focus();
+          if ('navigate' in client) {
+            client.navigate(targetUrl);
+          }
+          return;
         }
-        return;
       }
-    }
-    if (clients.openWindow) {
-      return clients.openWindow(targetUrl);
-    }
-  }).then(() => updateBadgeCount());
+      if (self.clients.openWindow) {
+        return self.clients.openWindow(targetUrl);
+      }
+    })
+    .then(() => updateBadgeFromNotifications());
 
   event.waitUntil(promiseChain);
 });
 
-// Обробка команд від клієнта
+// ── Notification close (swipe away) ──────────────────────
+self.addEventListener('notificationclose', (event) => {
+  event.waitUntil(updateBadgeFromNotifications());
+});
+
+// ── Messages from client ─────────────────────────────────
 self.addEventListener('message', (event) => {
-  if (event.data && event.data.type === 'CLEAR_NOTIFICATIONS') {
-    event.waitUntil(
-      self.registration.getNotifications().then((notifications) => {
-        notifications.forEach((notification) => {
-          if (!event.data.chatId || notification.data?.chatId === event.data.chatId) {
+  if (!event.data || !event.data.type) return;
+
+  switch (event.data.type) {
+    case 'SKIP_WAITING':
+      self.skipWaiting();
+      break;
+
+    case 'CLEAR_NOTIFICATIONS':
+      event.waitUntil(
+        self.registration.getNotifications().then((notifications) => {
+          for (const notification of notifications) {
+            if (!event.data.chatId || notification.data?.chatId === event.data.chatId) {
+              notification.close();
+            }
+          }
+          return updateBadgeFromNotifications();
+        }),
+      );
+      break;
+
+    case 'RESET_BADGE':
+      event.waitUntil(
+        self.registration.getNotifications().then((notifications) => {
+          for (const notification of notifications) {
             notification.close();
           }
-        });
-        return updateBadgeCount();
-      })
-    );
+          return clearBadge();
+        }),
+      );
+      break;
+
+    default:
+      break;
   }
 });

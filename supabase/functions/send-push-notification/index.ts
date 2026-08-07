@@ -101,10 +101,14 @@ Deno.serve(async (req: Request) => {
       await webpush.sendNotification(subscription, notificationPayload, pushOptions)
       console.log(`Push sent to ${recipientId}`)
     } catch (pushError: any) {
-      if (pushError?.statusCode === 404 || pushError?.statusCode === 410) {
+      const status = pushError?.statusCode
+      // 404 = endpoint not found, 410 = subscription expired, 403 = VAPID mismatch
+      if (status === 404 || status === 410 || status === 403) {
+        console.log(`Removing stale push subscription for ${recipientId} (HTTP ${status})`)
         await supabase.from('user_push_subscriptions').delete().eq('user_id', recipientId)
+      } else {
+        console.error('Push error:', pushError)
       }
-      console.error('Push error:', pushError)
     }
 
     return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })

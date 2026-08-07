@@ -10,7 +10,7 @@ import { resetBadge } from '@/components/layout/PwaRegister';
  * screen badge / unread counter is cleared when the user has read the
  * messages.
  */
-export async function clearPushNotifications(): Promise<void> {
+export async function clearPushNotifications(chatId?: string): Promise<void> {
   if (typeof window === 'undefined' || typeof navigator === 'undefined') {
     return;
   }
@@ -19,15 +19,29 @@ export async function clearPushNotifications(): Promise<void> {
   //    Uses the centralized resetBadge() which also persists count to localStorage.
   resetBadge();
 
-  // 2. Ask the Service Worker to close every active push notification.
-  //    On Android this resets the system unread-notification counter that
-  //    renders on the PWA icon.
-  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+  // 2. Directly clear badge as a safety net (works even without SW controller)
+  if ('clearAppBadge' in navigator) {
+    try {
+      (navigator as unknown as { clearAppBadge: () => Promise<void> }).clearAppBadge();
+    } catch {
+      // Ignore
+    }
+  }
+
+  // 3. Ask the Service Worker to close active push notifications.
+  //    Use navigator.serviceWorker.ready as fallback when controller is null
+  //    (e.g. right after SW activation before it claims the page).
+  if ('serviceWorker' in navigator) {
     try {
       const registration = await navigator.serviceWorker.ready;
-      registration.active?.postMessage({ type: 'CLEAR_NOTIFICATIONS' });
-      // Notify the client (and other tabs) to reset their badge counter state
-      registration.active?.postMessage({ type: 'RESET_BADGE' });
+      const sw = registration.active || navigator.serviceWorker.controller;
+      if (sw) {
+        sw.postMessage({ type: 'CLEAR_NOTIFICATIONS', chatId });
+        // If no specific chatId, also do a full badge reset
+        if (!chatId) {
+          sw.postMessage({ type: 'RESET_BADGE' });
+        }
+      }
     } catch {
       // Ignore – service worker may not be ready/available
     }
