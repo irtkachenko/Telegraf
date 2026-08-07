@@ -109,14 +109,14 @@ export default function ChatPage() {
     [messages.length],
   );
 
-  // Redirect on error (only when NOT loading)
+  // Redirect ONLY when fetch explicitly fails with an error (e.g. 404 Chat Not Found)
   useEffect(() => {
-    if (isAuthLoading || isChatLoading) return; // Don't redirect while loading
+    if (isAuthLoading || isChatLoading || isMessagesLoading) return;
     
-    if (isError || (!chat && !isMessagesLoading)) {
+    if (isError) {
       router.replace('/');
     }
-  }, [isAuthLoading, isChatLoading, chat, isError, router, isMessagesLoading]);
+  }, [isAuthLoading, isChatLoading, isMessagesLoading, isError, router]);
 
   // Loader logic
   useEffect(() => {

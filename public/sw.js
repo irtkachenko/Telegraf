@@ -1,4 +1,4 @@
-const CACHE_NAME = 'telegraf-cache-v6';
+const CACHE_NAME = 'telegraf-cache-v7';
 
 // ── Install ──────────────────────────────────────────────
 self.addEventListener('install', () => {
@@ -7,11 +7,13 @@ self.addEventListener('install', () => {
 
 // ── Activate ─────────────────────────────────────────────
 self.addEventListener('activate', (event) => {
+  // Clear ALL old caches on activation — we don't cache app assets,
+  // Vercel/Next.js handles immutable hashed bundles on its own CDN.
   event.waitUntil(
     caches.keys().then((keys) =>
       Promise.all(
         keys
-          .filter((key) => key.startsWith('telegraf-cache-') && key !== CACHE_NAME)
+          .filter((key) => key.startsWith('telegraf-cache-'))
           .map((key) => caches.delete(key)),
       ),
     ).then(() => self.clients.claim()),
@@ -107,7 +109,7 @@ self.addEventListener('notificationclick', (event) => {
   const promiseChain = self.clients
     .matchAll({ type: 'window', includeUncontrolled: true })
     .then(async (windowClients) => {
-      // 1. If we have an open browser tab, focus it and navigate via Client postMessage
+      // 1. If an open browser window/tab exists, focus it and trigger Next.js SPA navigation
       for (const client of windowClients) {
         if (client.url.includes(self.location.origin) && 'focus' in client) {
           await client.focus();
@@ -116,18 +118,11 @@ self.addEventListener('notificationclick', (event) => {
             url: targetUrl,
             chatId: chatId,
           });
-          if ('navigate' in client && typeof client.navigate === 'function') {
-            try {
-              await client.navigate(targetUrl);
-            } catch {
-              // Ignore navigation errors in active tab
-            }
-          }
           return;
         }
       }
 
-      // 2. If no tab is open, open a new window directly to the chat
+      // 2. If no window is open, open a fresh window directly to the target chat URL
       if (self.clients.openWindow) {
         return self.clients.openWindow(targetUrl);
       }

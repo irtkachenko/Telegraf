@@ -198,12 +198,14 @@ export function usePushNotifications() {
 
       if (!isStandalonePwa || !pushSupported) return false;
 
-      // Request permission even if previously denied - browser will show prompt again
-      if (Notification.permission === 'default' || Notification.permission === 'denied') {
+      // Only request permission if default (will show browser prompt) or granted
+      if (Notification.permission === 'default') {
         const permission = await Notification.requestPermission();
         if (permission !== 'granted') {
           return false;
         }
+      } else if (Notification.permission !== 'granted') {
+        return false;
       }
 
       const registration = await getPushRegistration();
@@ -292,6 +294,31 @@ export function usePushNotifications() {
         .catch(() => {});
     };
   }, [isStandalonePwa, pushSupported, queryClient, subscribeMutation, user]);
+
+  // Automatically request notification permission ONCE on first login (after smooth layout load)
+  useEffect(() => {
+    if (!user || !isStandalonePwa || !pushSupported) return;
+    if (typeof window === 'undefined' || !('Notification' in window)) return;
+    if (Notification.permission !== 'default') return;
+
+    const storageKey = `telegraf:push-prompt-requested:${user.id}`;
+    if (localStorage.getItem(storageKey)) return;
+
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem(storageKey, 'true');
+        Notification.requestPermission().then((permission) => {
+          if (permission === 'granted' && !subscribeMutation.isPending) {
+            subscribeMutation.mutateAsync().catch(() => {});
+          }
+        });
+      } catch {
+        // Ignore prompt errors
+      }
+    }, 1800);
+
+    return () => clearTimeout(timer);
+  }, [user, isStandalonePwa, pushSupported, subscribeMutation]);
 
   return {
     isSubscribed: !!isSubscribed,

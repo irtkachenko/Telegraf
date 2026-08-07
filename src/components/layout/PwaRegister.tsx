@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useBadgeSync } from '@/hooks/pwa/useBadgeSync';
 
 const BADGE_COUNT_STORAGE_KEY = 'telegraf:badge-count';
 
@@ -75,6 +76,7 @@ export function resetBadge(): void {
 
 export default function PwaRegister() {
   const router = useRouter();
+  useBadgeSync();
 
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return;
