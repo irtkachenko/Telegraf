@@ -3,6 +3,7 @@
 import { type InfiniteData, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { messagesApi } from '@/services';
+import { clearPushNotifications } from '@/services/push';
 import { handleError } from '@/shared/lib/error-handler';
 import { NetworkError } from '@/shared/lib/errors';
 import type { Message } from '@/types';
@@ -44,6 +45,8 @@ export function useDeleteMessage(chatId: string) {
     },
     onSuccess: () => {
       toast.success('Повідомлення видалено');
+      // Очищення push-сповіщень та скидання badge при видаленні повідомлень
+      void clearPushNotifications();
       queryClient.invalidateQueries({ queryKey: ['messages', chatId] });
     },
   });

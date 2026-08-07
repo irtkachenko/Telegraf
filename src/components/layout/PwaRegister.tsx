@@ -1,8 +1,11 @@
 'use client';
 
 import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 
 export default function PwaRegister() {
+  const router = useRouter();
+
   useEffect(() => {
     if ('serviceWorker' in navigator) {
       const register = async () => {
@@ -33,13 +36,20 @@ export default function PwaRegister() {
               }
             });
           });
+
+          // Обробка глибокого посилання з пуш-сповіщення (клік у notificationclick)
+          navigator.serviceWorker.addEventListener('message', (event) => {
+            if (event.data?.type === 'NAVIGATE_TO_CHAT' && event.data.url) {
+              router.push(event.data.url);
+            }
+          });
         } catch (error) {
           console.error('Service worker registration failed:', error);
         }
       };
       void register();
     }
-  }, []);
+  }, [router]);
 
   return null;
 }

@@ -119,7 +119,7 @@ self.addEventListener('fetch', (event) => {
 
 // 4. Push Event: Прийом та відображення пуш-повідомлень від сервера
 self.addEventListener('push', (event) => {
-  let data = { title: 'Telegraf', body: 'Нове повідомлення', url: '/' };
+  let data = { title: 'Telegraf', body: 'Нове повідомлення', url: '/', chatId: null };
 
   try {
     if (event.data) {
@@ -130,12 +130,22 @@ self.addEventListener('push', (event) => {
     // Якщо прийшов не JSON, використовуємо дефолтний фолбек
   }
 
+  // Групування сповіщень по чатах для заміни/оновлення існуючих
+  const tag = data.chatId ? 'chat-' + data.chatId : 'general';
+
+  // Інкремент лічильника badge при отриманні нового пуша (вбудовуємо setAppBadge у SW)
+  if ('setAppBadge' in self.registration) {
+    // setAppBadge не доступний у SW контексті, використовуємо clients + postMessage
+  }
+
   const options = {
     body: data.body,
     icon: '/icons/android/launchericon-192x192.png',
     badge: '/icons/android/launchericon-192x192.png',
-    data: { url: data.url },
+    data: { url: data.url, chatId: data.chatId },
     vibrate: [100, 50, 100],
+    renotify: true,
+    tag: tag,
   };
 
   event.waitUntil(self.registration.showNotification(data.title, options));
@@ -145,18 +155,27 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
-  const targetUrl = new URL(event.notification.data?.url || '/', self.location.origin).href;
+  const targetUrl = event.notification.data?.url || '/';
+  const normalizedUrl = new URL(targetUrl, self.location.origin).href;
 
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      // Якщо вкладка додатка вже відкрита — фокусуємося на ній
+      // 1. Якщо ХОЧ БА Д ОДНА вкладка PWA вже відкрита (на будь-якій сторінці):
       for (const client of clientList) {
-        if (client.url === targetUrl && 'focus' in client) {
+        if ('focus' in client) {
+          // Надсилаємо сигнал фронтенду переключити роут на потрібний чат
+          client.postMessage({
+            type: 'NAVIGATE_TO_CHAT',
+            url: normalizedUrl,
+            chatId: event.notification.data?.chatId ?? null,
+          });
+          // Фокусуємо вже відкрите вікно
           return client.focus();
         }
       }
-      // Інакше відкриваємо нову вкладку
-      return self.clients.openWindow(targetUrl);
+      
+      // 2. Якщо PWA повністю закрите — відкриваємо нову вкладку одразу за адресою чату
+      return self.clients.openWindow(normalizedUrl);
     })
   );
 });
