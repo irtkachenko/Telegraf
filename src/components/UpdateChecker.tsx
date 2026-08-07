@@ -5,34 +5,23 @@ import { RefreshCw } from 'lucide-react';
 import Image from 'next/image';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-const CHECK_INTERVAL = 3 * 60 * 1000; // 3 minutes
-const INITIAL_CHECK_DELAY = 3000; // Wait 3s after page load before first check
+const CHECK_INTERVAL = 2 * 60 * 1000; // Check every 2 minutes
+const VERSION_STORAGE_KEY = 'telegraf:app-version';
 
-/**
- * UpdateChecker — blocking update gate.
- *
- * How it works:
- * 1. On Vercel, every `git push` triggers a new deploy. Each deploy gets a unique
- *    `VERCEL_GIT_COMMIT_SHA` which is exposed via `/api/version`.
- * 2. On first load, the component fetches the current version and stores it.
- * 3. Periodically (every 3 min), on focus, on visibility change, and on coming
- *    back online, it re-fetches `/api/version`.
- * 4. If the version has changed, a BLOCKING full-screen modal appears:
- *    "Доступне оновлення — натисніть Оновити". The user CANNOT use the app
- *    until they press the button.
- * 5. Pressing "Оновити" clears all SW caches and hard-reloads the page.
- */
 export default function UpdateChecker({ children }: { children: React.ReactNode }) {
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [isReloading, setIsReloading] = useState(false);
-  const currentVersionRef = useRef<string | null>(null);
-  const hasCheckedOnce = useRef(false);
+  const latestServerVersionRef = useRef<string | null>(null);
 
   const checkVersion = useCallback(async () => {
     try {
-      const res = await fetch('/api/version', {
+      // Append timestamp query parameter to bypass mobile browser cache entirely
+      const res = await fetch(`/api/version?t=${Date.now()}`, {
         cache: 'no-store',
-        headers: { 'Cache-Control': 'no-cache' },
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+        },
       });
       if (!res.ok) return;
       const data = await res.json();
@@ -40,19 +29,31 @@ export default function UpdateChecker({ children }: { children: React.ReactNode 
 
       if (!serverVersion) return;
 
-      if (!hasCheckedOnce.current) {
-        // First check — just store the version, don't trigger update
-        currentVersionRef.current = serverVersion;
-        hasCheckedOnce.current = true;
+      latestServerVersionRef.current = serverVersion;
+
+      let storedVersion: string | null = null;
+      try {
+        storedVersion = localStorage.getItem(VERSION_STORAGE_KEY);
+      } catch {
+        // Ignore
+      }
+
+      if (!storedVersion) {
+        // First run on this device — record the baseline version
+        try {
+          localStorage.setItem(VERSION_STORAGE_KEY, serverVersion);
+        } catch {
+          // Ignore
+        }
         return;
       }
 
-      if (currentVersionRef.current && serverVersion !== currentVersionRef.current) {
-        // Version changed — show blocking update modal
+      if (storedVersion !== serverVersion) {
+        // Server version is different from the stored version -> BLOCK APP
         setUpdateAvailable(true);
       }
     } catch {
-      // Network error — ignore, will retry later
+      // Ignore network errors
     }
   }, []);
 
@@ -64,7 +65,7 @@ export default function UpdateChecker({ children }: { children: React.ReactNode 
         await registration.update();
       }
     } catch {
-      // Ignore — can fail when offline
+      // Ignore
     }
   }, []);
 
@@ -72,19 +73,27 @@ export default function UpdateChecker({ children }: { children: React.ReactNode 
     setIsReloading(true);
 
     try {
-      // 1. Clear all caches
+      const newVersion = latestServerVersionRef.current;
+      if (newVersion) {
+        try {
+          localStorage.setItem(VERSION_STORAGE_KEY, newVersion);
+        } catch {
+          // Ignore
+        }
+      }
+
+      // 1. Clear caches
       if ('caches' in window) {
         const keys = await caches.keys();
         await Promise.all(keys.map((key) => caches.delete(key)));
       }
 
-      // 2. Unregister old SW and register fresh
+      // 2. Tell SW to skip waiting and unregister
       if ('serviceWorker' in navigator) {
         const registrations = await navigator.serviceWorker.getRegistrations();
         for (const reg of registrations) {
-          const waiting = reg.waiting;
-          if (waiting) {
-            waiting.postMessage({ type: 'SKIP_WAITING' });
+          if (reg.waiting) {
+            reg.waiting.postMessage({ type: 'SKIP_WAITING' });
           }
           await reg.update();
         }
@@ -93,51 +102,51 @@ export default function UpdateChecker({ children }: { children: React.ReactNode 
       // Ignore cleanup errors
     }
 
-    // 3. Hard reload — bypass browser cache entirely
+    // 3. Hard reload bypassing cache
     setTimeout(() => {
-      window.location.reload();
-    }, 500);
+      window.location.href = window.location.origin + window.location.pathname + `?v=${Date.now()}`;
+    }, 400);
   }, []);
 
   useEffect(() => {
-    // Delay first check to let the app fully hydrate
-    const initialTimer = setTimeout(() => {
-      void checkVersion();
-      void forceSwUpdate();
-    }, INITIAL_CHECK_DELAY);
+    // Check version immediately on mount
+    void checkVersion();
+    void forceSwUpdate();
 
-    // Periodic check
+    // Check version periodically
     const intervalId = setInterval(() => {
       void checkVersion();
       void forceSwUpdate();
     }, CHECK_INTERVAL);
 
-    // Check on focus (user switches back to the app)
-    const handleFocus = () => void checkVersion();
-    window.addEventListener('focus', handleFocus);
-
-    // Check on coming back online
-    const handleOnline = () => void checkVersion();
-    window.addEventListener('online', handleOnline);
-
-    // Check on visibility change (PWA resumed from background)
+    // Check when window gains focus or PWA resumes from background
+    const handleFocus = () => {
+      void checkVersion();
+      void forceSwUpdate();
+    };
+    const handleOnline = () => {
+      void checkVersion();
+      void forceSwUpdate();
+    };
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         void checkVersion();
+        void forceSwUpdate();
       }
     };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    // bfcache restore
     const handlePageShow = (event: PageTransitionEvent) => {
       if (event.persisted) {
         void checkVersion();
+        void forceSwUpdate();
       }
     };
+
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('online', handleOnline);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('pageshow', handlePageShow);
 
     return () => {
-      clearTimeout(initialTimer);
       clearInterval(intervalId);
       window.removeEventListener('focus', handleFocus);
       window.removeEventListener('online', handleOnline);
@@ -150,12 +159,12 @@ export default function UpdateChecker({ children }: { children: React.ReactNode 
   if (updateAvailable) {
     return (
       <>
-        {/* Render children behind the overlay so the layout doesn't break */}
+        {/* Render children behind overlay */}
         <div className="pointer-events-none select-none" aria-hidden="true" inert={true}>
           {children}
         </div>
 
-        {/* Full-screen blocking overlay */}
+        {/* Fullscreen blocking modal */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -164,7 +173,7 @@ export default function UpdateChecker({ children }: { children: React.ReactNode 
           <motion.div
             initial={{ opacity: 0, y: 30, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            transition={{ type: 'spring', stiffness: 300, damping: 25, delay: 0.1 }}
+            transition={{ type: 'spring', stiffness: 300, damping: 25, delay: 0.05 }}
             className="flex flex-col items-center gap-6 px-8 py-10 max-w-sm w-full mx-4"
           >
             {/* Logo */}
@@ -214,7 +223,7 @@ export default function UpdateChecker({ children }: { children: React.ReactNode 
     );
   }
 
-  // ── Reloading state (after pressing update) ────────────
+  // ── Reloading state ────────────────────────────────────
   if (isReloading) {
     return (
       <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black">

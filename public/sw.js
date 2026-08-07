@@ -1,4 +1,4 @@
-const CACHE_NAME = 'telegraf-cache-v8';
+const CACHE_NAME = 'telegraf-cache-v9';
 
 // ── Install ──────────────────────────────────────────────
 self.addEventListener('install', () => {
@@ -74,14 +74,19 @@ self.addEventListener('push', (event) => {
   const messageId = notificationData.messageId;
   const targetUrl = notificationData.url || (chatId ? `/chat/${chatId}` : '/chat');
 
-  // Unique tag per message ensures Android OS displays a Telegram-like Heads-Up Popup
-  // banner even when screen is locked/off.
-  const notificationTag = messageId ? `msg-${messageId}` : `chat-${chatId}-${Date.now()}`;
+  // Absolute URLs for icons are required by Android OS for background heads-up notifications
+  const origin = self.location.origin;
+  const iconUrl = new URL('/icons/android/launchericon-192x192.png', origin).href;
+  const badgeUrl = new URL('/icons/android/launchericon-96x96.png', origin).href;
+
+  // Unique tag per message + requireInteraction force Android OS to wake up
+  // and trigger a high-priority Heads-Up Popup banner even on lockscreen.
+  const notificationTag = messageId ? `msg-${messageId}` : `msg-${Date.now()}`;
 
   const options = {
     body: notificationData.body || 'Нове повідомлення',
-    icon: '/icons/android/launchericon-192x192.png',
-    badge: '/icons/android/launchericon-96x96.png',
+    icon: iconUrl,
+    badge: badgeUrl,
     data: {
       url: targetUrl,
       chatId: chatId,
@@ -89,8 +94,9 @@ self.addEventListener('push', (event) => {
     },
     tag: notificationTag,
     renotify: true,
-    vibrate: [200, 100, 200, 100, 200],
-    requireInteraction: false,
+    requireInteraction: true,
+    vibrate: [300, 100, 300, 100, 300],
+    timestamp: Date.now(),
     silent: false,
   };
 
