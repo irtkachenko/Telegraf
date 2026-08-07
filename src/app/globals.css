@@ -41,13 +41,16 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-tektur), "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  /* Telegram-style system font stack */
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 
-  /* High-end typography rendering */
+  /* Telegram-style readable typography */
+  font-size: 15px;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
-  letter-spacing: -0.015em;
+  letter-spacing: -0.01em;
   overflow-x: hidden;
 }
 

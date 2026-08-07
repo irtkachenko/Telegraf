@@ -126,7 +126,7 @@ const MessageBubble = memo(
                     isEditing && 'ring-1 ring-[#5e6ad2]/40 rounded-lg overflow-hidden',
                   )}
                 >
-                  {/* Reply Target Details - Linear style: clean card */}
+                  {/* Reply Target Details - Telegram readable style */}
                   {(() => {
                     const rId = message.reply_to_id;
                     if (!rId) return null;
@@ -168,7 +168,7 @@ const MessageBubble = memo(
                     );
                   })()}
 
-                  {/* Bubble Content - Linear style: clean, minimal bubble */}
+                  {/* Bubble Content - Telegram readable style */}
                   <div
                     className={cn(
                       'rounded-xl px-3.5 py-2.5 w-full',
@@ -179,7 +179,7 @@ const MessageBubble = memo(
                   >
                     {/* Text Content */}
                     {message.content && (
-                      <div className="text-[13px] text-gray-200 leading-relaxed whitespace-pre-wrap break-all sm:break-words block w-full max-w-full overflow-hidden min-w-0">
+                      <div className="text-[15px] leading-[1.5] whitespace-pre-wrap break-all sm:break-words block w-full max-w-full overflow-hidden min-w-0">
                         <Linkify
                           options={{
                             target: '_blank',

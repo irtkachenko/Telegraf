@@ -22,7 +22,7 @@ interface NavbarProps {
 
 export default function Navbar({ user, onMenuClick }: NavbarProps) {
   return (
-    <nav className="fixed top-0 left-0 right-0 z-[800] flex items-center justify-between px-4 sm:px-6 h-14 border-b border-white/[0.05] bg-[#08080a]/70 backdrop-blur-md">
+    <nav className="fixed top-0 left-0 right-0 z-[800] flex items-center justify-between px-4 sm:px-6 h-14 border-b border-white/[0.08] bg-[#0e1621]/90 backdrop-blur-md">
       {/* Left: Menu & Logo */}
       <div className="flex items-center gap-2">
         {user && (
@@ -49,7 +49,7 @@ export default function Navbar({ user, onMenuClick }: NavbarProps) {
                 type="button"
                 className="flex items-center gap-2.5 hover:opacity-95 focus:outline-none group cursor-pointer"
               >
-                <span className="hidden sm:block text-xs font-semibold text-gray-300 group-hover:text-white transition-colors">
+                <span className="hidden sm:block text-xs font-medium text-gray-300 group-hover:text-white transition-colors">
                   {user.name}
                 </span>
                 <div className="relative w-7 h-7 rounded-full overflow-hidden border border-white/10 group-hover:border-white/20 transition-all">
@@ -64,7 +64,7 @@ export default function Navbar({ user, onMenuClick }: NavbarProps) {
               </button>
             </DropdownMenuTrigger>
 
-            <DropdownMenuContent align="end" className="w-56 bg-[#121216] border border-white/[0.08] text-white rounded-lg p-1">
+            <DropdownMenuContent align="end" className="w-56 bg-[#17212b] border border-white/[0.1] text-white rounded-lg p-1">
               <div className="px-2.5 py-2">
                 <p className="text-[9px] uppercase tracking-wider text-gray-500 font-bold">
                   Активний акаунт
@@ -72,7 +72,7 @@ export default function Navbar({ user, onMenuClick }: NavbarProps) {
                 <p className="text-xs font-medium text-gray-200 truncate mt-0.5">{user.email}</p>
               </div>
 
-              <DropdownMenuSeparator className="bg-white/[0.05]" />
+              <DropdownMenuSeparator className="bg-white/[0.08]" />
 
               <div className="p-0">
                 <SignOutButton />

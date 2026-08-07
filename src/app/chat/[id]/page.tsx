@@ -268,7 +268,7 @@ export default function ChatPage() {
   const isTypingNow = otherParticipant && typingUsers.has(otherParticipant.id);
 
   return (
-    <div className="flex flex-col h-[calc(100dvh-56px)] w-full bg-[#08080a] relative overflow-hidden">
+    <div className="flex flex-col h-[calc(100dvh-56px)] w-full relative overflow-hidden">
       {isLoaderVisible && (
         <div className="absolute inset-0 z-30 flex items-center justify-center text-gray-400 bg-[#08080a] backdrop-blur-md">
           <div className="flex flex-col items-center gap-2.5">
@@ -279,7 +279,7 @@ export default function ChatPage() {
       )}
       {/* Header - sticky to stay visible when keyboard opens */}
       <div
-        className="px-4.5 py-2.5 border-b border-white/[0.05] flex items-center justify-between backdrop-blur-md bg-[#0c0d0f]/50 sticky top-0 z-20 shrink-0"
+        className="px-4 py-2.5 border-b border-white/[0.05] flex items-center justify-between backdrop-blur-md bg-[#0c0d0f]/50 sticky top-0 z-20 shrink-0"
         style={{ opacity: isLoaderVisible ? 0 : 1 }}
       >
         <div className="flex items-center gap-3">
@@ -293,10 +293,10 @@ export default function ChatPage() {
             />
           </div>
           <div className="min-w-0">
-            <h2 className="text-xs font-bold text-white tracking-tight truncate leading-tight">
+            <h2 className="text-sm font-bold text-white tracking-tight truncate leading-tight">
               {otherParticipant?.name || 'Невідомий користувач'}
             </h2>
-            <div className="text-[9px] font-semibold transition-colors mt-0.5">
+            <div className="text-[11px] font-normal transition-colors mt-0.5">
               {isTypingNow ? (
                 <span className="text-[#8d96e9] animate-pulse">друкує...</span>
               ) : isOnline ? (

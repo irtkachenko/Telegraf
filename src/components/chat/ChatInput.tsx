@@ -195,8 +195,8 @@ export default function ChatInput({
             onKeyDown={handleKeyDown}
             placeholder="Напишіть повідомлення..."
             className={cn(
-              'w-full bg-transparent border-none outline-none focus:outline-none focus:ring-0 px-4 pt-3 pb-2 text-xs text-white placeholder:text-gray-500',
-              'resize-none overflow-y-auto leading-relaxed',
+              'w-full bg-transparent border-none outline-none focus:outline-none focus:ring-0 px-4 pt-3 pb-2 text-[15px] text-white placeholder:text-gray-500',
+              'resize-none overflow-y-auto leading-[1.5]',
               'scrollbar-hide',
             )}
             style={{ minHeight: '44px' }}

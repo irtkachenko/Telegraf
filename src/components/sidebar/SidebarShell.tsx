@@ -33,36 +33,36 @@ function SidebarShellBase() {
 
   return (
     <aside
-      className="h-screen lg:h-[calc(100vh-56px)] w-80 bg-[#0c0d0f] border-r border-white/[0.05] flex flex-col z-40 shrink-0 overflow-hidden"
+      className="h-screen lg:h-[calc(100vh-56px)] w-80 bg-[#0e1621] border-r border-white/[0.08] flex flex-col z-40 shrink-0 overflow-hidden"
       style={{ willChange: 'transform' }}
     >
       {/* Header section with cleaner spacing */}
       <div className="pt-4 pb-2">
         {/* Sleek Segmented Switcher */}
         <div className="px-4.5 mb-4">
-          <div className="flex p-0.5 bg-white/[0.02] rounded-lg border border-white/[0.05]">
+          <div className="flex p-0.5 bg-white/[0.03] rounded-lg border border-white/[0.08]">
             <button
               type="button"
               onClick={() => setTab('chats')}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-semibold transition-all duration-200 cursor-pointer ${
+              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-medium transition-all duration-200 cursor-pointer ${
                 tab === 'chats'
-                  ? 'bg-white/[0.06] text-white shadow-sm border border-white/[0.05]'
-                  : 'text-gray-400 hover:text-gray-200 border border-transparent'
+                  ? 'bg-white/[0.08] text-white shadow-sm border border-white/[0.08]'
+                  : 'text-[#8a8b98] hover:text-gray-200 border border-transparent'
               }`}
             >
-              <MessageSquare className="w-3.5 h-3.5 text-[#8d96e9]" />
+              <MessageSquare className="w-3.5 h-3.5" />
               <span>Діалоги</span>
             </button>
             <button
               type="button"
               onClick={() => setTab('contacts')}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-semibold transition-all duration-200 cursor-pointer ${
+              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-medium transition-all duration-200 cursor-pointer ${
                 tab === 'contacts'
-                  ? 'bg-white/[0.06] text-white shadow-sm border border-white/[0.05]'
-                  : 'text-gray-400 hover:text-gray-200 border border-transparent'
+                  ? 'bg-white/[0.08] text-white shadow-sm border border-white/[0.08]'
+                  : 'text-[#8a8b98] hover:text-gray-200 border border-transparent'
               }`}
             >
-              <Users className="w-3.5 h-3.5 text-[#8d96e9]" />
+              <Users className="w-3.5 h-3.5" />
               <span>Контакти</span>
             </button>
           </div>
@@ -80,7 +80,7 @@ function SidebarShellBase() {
         {tab === 'chats' ? (
           <>
             <div className="mb-2.5 px-4.5">
-              <h2 className="text-[10px] font-bold uppercase tracking-wider text-gray-500">
+              <h2 className="text-[10px] font-bold uppercase tracking-wider text-[#6b6d75]">
                 Ваші діалоги
               </h2>
             </div>
@@ -98,7 +98,7 @@ export const SidebarShell = memo(function SidebarShellWrapper() {
   return (
     <Suspense
       fallback={
-        <div className="w-80 h-screen bg-[#0c0d0f] border-r border-white/[0.05] animate-pulse" />
+        <div className="w-80 h-screen bg-[#0e1621] border-r border-white/[0.08] animate-pulse" />
       }
     >
       <SidebarShellBase />
