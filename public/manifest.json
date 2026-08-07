@@ -1,6 +1,6 @@
 {
-  "name": "Telegraf",
-  "short_name": "",
+  "name": "",
+  "short_name": "Telegraf",
   "description": "A modern messaging app",
   "start_url": "/",
   "display": "standalone",
