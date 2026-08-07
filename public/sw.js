@@ -1,4 +1,4 @@
-const CACHE_NAME = 'telegraf-cache-v7';
+const CACHE_NAME = 'telegraf-cache-v8';
 
 // ── Install ──────────────────────────────────────────────
 self.addEventListener('install', () => {
@@ -7,8 +7,6 @@ self.addEventListener('install', () => {
 
 // ── Activate ─────────────────────────────────────────────
 self.addEventListener('activate', (event) => {
-  // Clear ALL old caches on activation — we don't cache app assets,
-  // Vercel/Next.js handles immutable hashed bundles on its own CDN.
   event.waitUntil(
     caches.keys().then((keys) =>
       Promise.all(
@@ -73,7 +71,12 @@ self.addEventListener('push', (event) => {
   }
 
   const chatId = notificationData.chatId;
+  const messageId = notificationData.messageId;
   const targetUrl = notificationData.url || (chatId ? `/chat/${chatId}` : '/chat');
+
+  // Unique tag per message ensures Android OS displays a Telegram-like Heads-Up Popup
+  // banner even when screen is locked/off.
+  const notificationTag = messageId ? `msg-${messageId}` : `chat-${chatId}-${Date.now()}`;
 
   const options = {
     body: notificationData.body || 'Нове повідомлення',
@@ -82,11 +85,13 @@ self.addEventListener('push', (event) => {
     data: {
       url: targetUrl,
       chatId: chatId,
+      messageId: messageId,
     },
-    tag: `chat-${chatId}`,
+    tag: notificationTag,
     renotify: true,
-    vibrate: [200, 100, 200],
+    vibrate: [200, 100, 200, 100, 200],
     requireInteraction: false,
+    silent: false,
   };
 
   const badgeCount = typeof notificationData.badgeCount === 'number' ? notificationData.badgeCount : undefined;
@@ -109,7 +114,7 @@ self.addEventListener('notificationclick', (event) => {
   const promiseChain = self.clients
     .matchAll({ type: 'window', includeUncontrolled: true })
     .then(async (windowClients) => {
-      // 1. If an open browser window/tab exists, focus it and trigger Next.js SPA navigation
+      // 1. If an open window/tab exists, focus it and tell Next.js router to push to the target chat
       for (const client of windowClients) {
         if (client.url.includes(self.location.origin) && 'focus' in client) {
           await client.focus();
@@ -122,7 +127,7 @@ self.addEventListener('notificationclick', (event) => {
         }
       }
 
-      // 2. If no window is open, open a fresh window directly to the target chat URL
+      // 2. If app is closed, open a new window directly to the target chat URL
       if (self.clients.openWindow) {
         return self.clients.openWindow(targetUrl);
       }
