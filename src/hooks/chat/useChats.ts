@@ -34,5 +34,9 @@ export function useChats() {
     },
     enabled: !!user,
     refetchOnWindowFocus: false,
+    // Real-time updates flow in through the WebSocket subscription and update
+    // the cache directly. Avoid redundant REST refetches when the cache is
+    // already fresh (e.g. re-mounting the chat list after navigation).
+    staleTime: 30_000,
   });
 }

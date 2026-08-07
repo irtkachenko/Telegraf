@@ -23,5 +23,6 @@ export function useGlobalRealtime(user: User | null) {
     return () => {
       unsubscribe();
     };
-  }, [user, subscribe, unsubscribe]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, subscribe, unsubscribe]);
 }

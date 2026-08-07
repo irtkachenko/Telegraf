@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 export interface ChatStateResult {
   isChatOpen: boolean;
@@ -12,10 +12,11 @@ export interface ChatStateResult {
 }
 
 /**
- * Hook РґР»СЏ СѓРїСЂР°РІР»С–РЅРЅСЏ СЃС‚Р°РЅРѕРј С‡Р°С‚С–РІ (РІС–РґРєСЂРёС‚С–, СЃС„РѕРєСѓСЃРѕРІР°РЅС–)
+ * Hook for managing chat state (open, focused, visible)
  */
 export function useChatState(): ChatStateResult {
   const [currentChat, setCurrentChat] = useState<string | null>(null);
+  const currentChatRef = useRef<string | null>(null);
   const [isWindowFocused, setIsWindowFocused] = useState(() =>
     typeof document !== 'undefined' ? document.hasFocus() : true,
   );
@@ -23,7 +24,13 @@ export function useChatState(): ChatStateResult {
     typeof document !== 'undefined' ? document.visibilityState === 'visible' : true,
   );
 
-  // Р’С–РґСЃС‚РµР¶СѓС”РјРѕ С„РѕРєСѓСЃ РІС–РєРЅР°
+  // Keep the ref in sync with the state so callbacks can read the latest
+  // value without depending on the state itself (stable identities).
+  useEffect(() => {
+    currentChatRef.current = currentChat;
+  }, [currentChat]);
+
+  // Track window focus
   useEffect(() => {
     const handleFocus = () => setIsWindowFocused(true);
     const handleBlur = () => {
@@ -40,7 +47,7 @@ export function useChatState(): ChatStateResult {
     };
   }, []);
 
-  // Р’С–РґСЃС‚РµР¶СѓС”РјРѕ РІРёРґРёРјС–СЃС‚СЊ РґРѕРєСѓРјРµРЅС‚Р°
+  // Track document visibility
   useEffect(() => {
     const handleVisibilityChange = () => {
       const isVisible = document.visibilityState === 'visible';
@@ -57,23 +64,20 @@ export function useChatState(): ChatStateResult {
     };
   }, []);
 
-  // Р’С–РґРєСЂРёРІР°С”РјРѕ С‡Р°С‚
+  // Open chat
   const openChat = useCallback((chatId: string) => {
     setCurrentChat(chatId);
   }, []);
 
-  // Р—Р°РєСЂРёРІР°С”РјРѕ С‡Р°С‚
-  const closeChat = useCallback(
-    (chatId: string) => {
-      if (currentChat === chatId) {
-        setCurrentChat(null);
-      }
-    },
-    [currentChat],
-  );
+  // Close chat — stable identity (reads from ref, not state)
+  const closeChat = useCallback((chatId: string) => {
+    if (currentChatRef.current === chatId) {
+      setCurrentChat(null);
+    }
+  }, []);
 
-  // РћС‚СЂРёРјСѓС”РјРѕ РїРѕС‚РѕС‡РЅРёР№ С‡Р°С‚
-  const getCurrentChat = useCallback(() => currentChat, [currentChat]);
+  // Get current chat — stable identity (reads from ref, not state)
+  const getCurrentChat = useCallback(() => currentChatRef.current, []);
 
   return {
     isChatOpen: currentChat !== null,

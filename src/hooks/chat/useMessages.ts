@@ -40,6 +40,10 @@ export function useMessages(chatId: string, isCloseToBottom: boolean) {
     getNextPageParam: () => undefined,
     enabled: !!chatId,
     refetchOnWindowFocus: false,
+    // Real-time updates flow in through the WebSocket subscription and update
+    // the cache directly. Avoid redundant REST refetches when the cache is
+    // already fresh (e.g. re-mounting the same chat after navigation).
+    staleTime: 30_000,
   });
 
   // Get all messages in a flattened memoized format

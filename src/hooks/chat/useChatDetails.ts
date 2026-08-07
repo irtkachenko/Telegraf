@@ -36,5 +36,8 @@ export function useChatDetails(chatId: string) {
       return { ...normalizedData, participants } as FullChat;
     },
     enabled: !!chatId && !!user,
+    // Avoid redundant REST refetches when the cache is already fresh
+    // (e.g. re-mounting the same chat after navigation).
+    staleTime: 30_000,
   });
 }

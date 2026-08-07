@@ -43,41 +43,62 @@ export default function MessageMediaGrid({ items, onMediaSettled }: MessageMedia
   const { urlCache, mediaStates, failedUrls, setUrl, addFailedUrl, removeFailedUrl, setMediaState } = useStorageStore();
   const { getUrl } = useStorageUrl();
 
-  // URL resolution effect
+  // Stable signature of the items so the effect only re-runs when the actual
+  // attachment set changes (not on every store write).
+  const itemsSignature = useMemo(
+    () => items.map((item) => `${item.id}:${item.url}`).join('|'),
+    [items],
+  );
+
+  // URL resolution effect.
+  // IMPORTANT: This effect must NOT depend on store state (urlCache/mediaStates/failedUrls)
+  // because it writes to that same store — depending on it would cause an infinite
+  // re-fetch loop. We read the latest store state imperatively via getState().
   useEffect(() => {
     if (!items || items.length === 0) return;
 
+    let isMounted = true;
     const now = Date.now();
     const expiryMs = storageConfig.defaults.signedUrlExpiry * 1000;
     const bufferMs = 5 * 60 * 1000;
 
     items.forEach(async (item) => {
-      const { cacheKey, itemUrl } = getState(urlCache, mediaStates, failedUrls, item);
-
-      if (itemUrl.startsWith('blob:') || item.is_deleted) return;
-
-      const cached = urlCache[cacheKey];
-      const needsRefresh = !cached || cached.expiresAt - now <= bufferMs;
-      if (!needsRefresh) return;
-
-      if (failedUrls.has(itemUrl)) return;
+      if (item.url.startsWith('blob:') || item.is_deleted) return;
 
       const ref = extractStorageRef(item.url);
       if (!ref) return;
+
+      // Read the latest store state imperatively to avoid subscribing to it.
+      const { urlCache: currentCache, mediaStates: currentMediaStates, failedUrls: currentFailed } =
+        useStorageStore.getState();
+
+      const cacheKey = `${item.id}:${item.url}`;
+      const cached = currentCache[cacheKey];
+      const needsRefresh = !cached || cached.expiresAt - now <= bufferMs;
+      if (!needsRefresh) return;
+
+      if (currentFailed.has(item.url)) return;
 
       setMediaState(cacheKey, { isLoading: true });
 
       try {
         const resolvedUrl = await getUrl(ref.bucket, ref.path);
+        if (!isMounted) return;
         setUrl(cacheKey, { url: resolvedUrl, expiresAt: Date.now() + expiryMs });
-        removeFailedUrl(itemUrl);
+        removeFailedUrl(item.url);
         setMediaState(cacheKey, { isLoading: false, isLoaded: true });
       } catch {
-        addFailedUrl(itemUrl);
+        if (!isMounted) return;
+        addFailedUrl(item.url);
         setMediaState(cacheKey, { isLoading: false, hasError: true });
       }
     });
-  }, [items, getUrl, urlCache, mediaStates, setUrl, addFailedUrl, removeFailedUrl, failedUrls, setMediaState]);
+
+    return () => {
+      isMounted = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [itemsSignature, getUrl, setUrl, addFailedUrl, removeFailedUrl, setMediaState]);
 
   // Process items with cached URLs
   const processedItems = useMemo(() => {
