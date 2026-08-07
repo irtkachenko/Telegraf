@@ -8,6 +8,7 @@ import Providers from '@/components/Providers';
 import UpdateChecker from '@/components/UpdateChecker';
 import Sidebar from '@/components/sidebar/Sidebar';
 import { createClient } from '@/lib/supabase/server';
+import InAppBanner from '@/components/ui/in-app-banner';
 import './globals.css';
 
 const geistSans = Geist({
@@ -70,6 +71,7 @@ export default async function RootLayout({
         <UpdateChecker>
           <Providers>
             <AuthProvider>
+              <InAppBanner />
               <GlobalCleanup>
                 <ChatLayoutWrapper
                   user={

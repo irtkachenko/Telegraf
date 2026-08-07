@@ -129,7 +129,19 @@ export default function PwaRegister() {
               break;
 
             case 'INCREMENT_BADGE':
-              incrementBadge();
+              // If the push payload included a total unread count, use it directly
+              if (typeof data.count === 'number' && data.count > 0) {
+                setBadgeCount(data.count);
+                if ('setAppBadge' in navigator) {
+                  try {
+                    navigator.setAppBadge(data.count);
+                  } catch {
+                    // Ignore
+                  }
+                }
+              } else {
+                incrementBadge();
+              }
               break;
 
             case 'RESET_BADGE':

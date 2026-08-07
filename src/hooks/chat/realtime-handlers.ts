@@ -1,5 +1,6 @@
 import type { InfiniteData, QueryClient } from '@tanstack/react-query';
 import type { User } from '@supabase/supabase-js';
+import { showInAppBanner } from '@/components/ui/in-app-banner';
 import { chatsApi, messagesApi } from '@/services';
 import type { ChatRow, FullChat, Message } from '@/types';
 import {
@@ -228,15 +229,41 @@ export async function handleMessageInsert(
   // This fixes missing avatars on new incoming messages.
   const needsHydration = !isFromMe && !nakedMessage.sender;
 
+  let messageToCache = nakedMessage;
+
   if (needsHydration) {
     try {
       const fullMessage = await messagesApi.getMessage(nakedMessage.id);
+      messageToCache = fullMessage;
       updateMessageInCache(queryClient, fullMessage);
     } catch {
       updateMessageInCache(queryClient, nakedMessage);
     }
   } else {
     updateMessageInCache(queryClient, nakedMessage);
+  }
+
+  // Trigger In-App Notification Banner if message is from another user and current chat is not open
+  if (!isFromMe && typeof window !== 'undefined') {
+    const currentPath = window.location.pathname;
+    const isCurrentChatOpen = currentPath === `/chat/${nakedMessage.chat_id}`;
+
+    if (!isCurrentChatOpen) {
+      const senderName = messageToCache.sender?.name || 'Користувач';
+      const senderAvatar = messageToCache.sender?.image || null;
+      const text =
+        messageToCache.content ||
+        (Array.isArray(messageToCache.attachments) && messageToCache.attachments.length > 0
+          ? '📎 Вкладення'
+          : 'Нове повідомлення');
+
+      showInAppBanner({
+        chatId: nakedMessage.chat_id,
+        senderName,
+        senderAvatar,
+        text,
+      });
+    }
   }
 }
 

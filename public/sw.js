@@ -19,10 +19,13 @@ self.addEventListener('activate', (event) => {
 });
 
 // ── Badge helpers ────────────────────────────────────────
-async function updateBadgeFromNotifications() {
+async function updateBadgeFromNotifications(badgeCountOverride) {
   try {
-    const notifications = await self.registration.getNotifications();
-    const count = notifications.length;
+    let count = badgeCountOverride;
+    if (typeof count !== 'number') {
+      const notifications = await self.registration.getNotifications();
+      count = notifications.length;
+    }
     if ('setAppBadge' in self.navigator) {
       if (count > 0) {
         await self.navigator.setAppBadge(count);
@@ -67,23 +70,29 @@ self.addEventListener('push', (event) => {
     return;
   }
 
+  const chatId = notificationData.chatId;
+  const targetUrl = notificationData.url || (chatId ? `/chat/${chatId}` : '/chat');
+
   const options = {
     body: notificationData.body || 'Нове повідомлення',
     icon: '/icons/android/launchericon-192x192.png',
     badge: '/icons/android/launchericon-96x96.png',
     data: {
-      url: notificationData.url || '/',
-      chatId: notificationData.chatId,
+      url: targetUrl,
+      chatId: chatId,
     },
-    tag: `chat-${notificationData.chatId}`,
+    tag: `chat-${chatId}`,
     renotify: true,
     vibrate: [200, 100, 200],
     requireInteraction: false,
   };
 
+  const badgeCount = typeof notificationData.badgeCount === 'number' ? notificationData.badgeCount : undefined;
+
   const promiseChain = self.registration
     .showNotification(notificationData.title || 'Telegraf', options)
-    .then(() => updateBadgeFromNotifications());
+    .then(() => updateBadgeFromNotifications(badgeCount))
+    .then(() => broadcastToClients({ type: 'INCREMENT_BADGE', count: badgeCount }));
 
   event.waitUntil(promiseChain);
 });
@@ -92,20 +101,33 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
-  const targetUrl = event.notification.data?.url || '/';
+  const chatId = event.notification.data?.chatId;
+  const targetUrl = event.notification.data?.url || (chatId ? `/chat/${chatId}` : '/chat');
 
   const promiseChain = self.clients
     .matchAll({ type: 'window', includeUncontrolled: true })
-    .then((windowClients) => {
+    .then(async (windowClients) => {
+      // 1. If we have an open browser tab, focus it and navigate via Client postMessage
       for (const client of windowClients) {
         if (client.url.includes(self.location.origin) && 'focus' in client) {
-          client.focus();
-          if ('navigate' in client) {
-            client.navigate(targetUrl);
+          await client.focus();
+          client.postMessage({
+            type: 'NAVIGATE_TO_CHAT',
+            url: targetUrl,
+            chatId: chatId,
+          });
+          if ('navigate' in client && typeof client.navigate === 'function') {
+            try {
+              await client.navigate(targetUrl);
+            } catch {
+              // Ignore navigation errors in active tab
+            }
           }
           return;
         }
       }
+
+      // 2. If no tab is open, open a new window directly to the chat
       if (self.clients.openWindow) {
         return self.clients.openWindow(targetUrl);
       }

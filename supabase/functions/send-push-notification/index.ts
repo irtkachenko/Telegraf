@@ -80,12 +80,66 @@ Deno.serve(async (req: Request) => {
     const senderName = sender?.name || 'Користувач'
     const shortContent = content ? (content.length > 100 ? content.substring(0, 97) + '...' : content) : 'Нове повідомлення'
 
+    // Count total unread messages across ALL chats for this recipient
+    // This ensures the badge shows the correct total, not just 1
+    let badgeCount = 1
+    try {
+      // Get all chats where the recipient is a participant
+      const { data: recipientChats } = await supabase
+        .from('chats')
+        .select('id, user_id, recipient_id, user_last_read_id, recipient_last_read_id')
+        .or(`user_id.eq.${recipientId},recipient_id.eq.${recipientId}`)
+
+      if (recipientChats && recipientChats.length > 0) {
+        let totalUnread = 0
+
+        for (const c of recipientChats) {
+          // Determine which last_read_id field belongs to the recipient
+          const isUser = c.user_id === recipientId
+          const lastReadId = isUser ? c.user_last_read_id : c.recipient_last_read_id
+
+          // Build query: count messages NOT sent by the recipient
+          let query = supabase
+            .from('messages')
+            .select('id', { count: 'exact', head: true })
+            .eq('chat_id', c.id)
+            .neq('sender_id', recipientId)
+
+          // If there's a last_read_id, get its created_at to filter newer messages
+          if (lastReadId) {
+            const { data: readMsg } = await supabase
+              .from('messages')
+              .select('created_at')
+              .eq('id', lastReadId)
+              .single()
+
+            if (readMsg?.created_at) {
+              query = query.gt('created_at', readMsg.created_at)
+            }
+          }
+
+          const { count: unreadCount } = await query
+
+          if (typeof unreadCount === 'number') {
+            totalUnread += unreadCount
+          }
+        }
+
+        if (totalUnread > 0) {
+          badgeCount = totalUnread
+        }
+      }
+    } catch {
+      // Fallback to 1 if count query fails
+    }
+
     const notificationPayload = JSON.stringify({
       title: senderName,
       body: shortContent,
       url: `/chat/${chatId}`,
       chatId: chatId,
-      messageId: messageId
+      messageId: messageId,
+      badgeCount: badgeCount,
     })
 
     // Опції відправки для високого пріоритету
