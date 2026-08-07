@@ -53,7 +53,7 @@ export default function ChatLayoutWrapper({ children, sidebar, user }: ChatLayou
   }
 
   return (
-    <div className="flex flex-col min-h-[100svh]">
+    <div className="flex flex-col h-[100dvh]">
       <Navbar user={user} onMenuClick={toggleSidebar} />
       {user && <PushSubscriptionGuard />}
 

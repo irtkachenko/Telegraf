@@ -268,7 +268,7 @@ export default function ChatPage() {
   const isTypingNow = otherParticipant && typingUsers.has(otherParticipant.id);
 
   return (
-    <div className="flex flex-col h-[100dvh] w-full bg-[#08080a] relative overflow-hidden">
+    <div className="flex flex-col h-[calc(100dvh-56px)] w-full bg-[#08080a] relative overflow-hidden">
       {isLoaderVisible && (
         <div className="absolute inset-0 z-30 flex items-center justify-center text-gray-400 bg-[#08080a] backdrop-blur-md">
           <div className="flex flex-col items-center gap-2.5">
@@ -316,14 +316,10 @@ export default function ChatPage() {
       {/* Messages Area - flex-1 ensures it takes remaining space */}
       <div className="flex-1 relative min-h-0" style={{ opacity: isLoaderVisible ? 0 : 1 }}>
         {messages.length === 0 && !isMessagesLoading ? (
-          <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-4">
-            <div className="w-16 h-16 bg-white/[0.03] rounded-2xl flex items-center justify-center mb-3 border border-white/[0.05] shadow-xl">
+          <div className="absolute inset-0 flex items-center justify-center p-4">
+            <div className="w-16 h-16 bg-white/[0.03] rounded-2xl flex items-center justify-center border border-white/[0.05] shadow-xl">
               <span className="text-2xl">💬</span>
             </div>
-            <h3 className="text-white font-bold text-sm mb-1">Поки що порожньо</h3>
-            <p className="text-gray-500 text-xs max-w-[240px]">
-              Напишіть щось, щоб розпочати бесіду!
-            </p>
           </div>
         ) : messages.length > 0 ? (
           <Virtuoso

@@ -1,6 +1,6 @@
 'use client';
 
-import { Check, Download, Info, LoaderCircle } from 'lucide-react';
+import { Check, Download, LoaderCircle } from 'lucide-react';
 import { usePwaInstall } from '@/hooks/pwa/usePwaInstall';
 
 interface PwaInstallButtonProps {
@@ -70,11 +70,9 @@ export function PwaInstallButton({ variant = 'navbar' }: PwaInstallButtonProps) 
       className="p-2 rounded-lg border transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed bg-white/[0.03] border-white/10 text-gray-400 hover:text-white hover:bg-white/[0.08] hover:border-white/20"
     >
       {isPrompting ? (
-        <LoaderCircle className="w-4 h-4 animate-spin" />
-      ) : canInstall ? (
-        <Download className="w-4 h-4" />
+        <LoaderCircle className="w-5 h-5 shrink-0 text-[#8d96e9] animate-spin" />
       ) : (
-        <Info className="w-4 h-4" />
+        <Download className="w-5 h-5 shrink-0 text-[#8d96e9]" />
       )}
     </button>
   );
