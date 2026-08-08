@@ -78,6 +78,10 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
   return outputArray;
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function getPushRegistration(): Promise<ServiceWorkerRegistration> {
   const registration = await navigator.serviceWorker.register('/sw.js');
 
@@ -106,6 +110,11 @@ async function getOrCreateBrowserSubscription(
 ): Promise<PushSubscriptionPayload | null> {
   if (!isPushAPISupported()) return null;
 
+  try {
+    await registration.update();
+  } catch {
+    // update() can fail offline — that's ok.
+  }
   const existing = await registration.pushManager.getSubscription();
   if (existing) {
     return existing.toJSON() as unknown as PushSubscriptionPayload;
@@ -124,7 +133,14 @@ async function getOrCreateBrowserSubscription(
       '[Push] Failed to create a new subscription:',
       err instanceof Error ? err.message : err,
     );
-    return null;
+    // Chrome sometimes creates the subscription asynchronously after an error.
+    // Wait a bit and re-check before giving up.
+    await sleep(4000);
+    const retryCheck = await registration.pushManager.getSubscription();
+    if (retryCheck) {
+      return retryCheck.toJSON() as unknown as PushSubscriptionPayload;
+    }
+    throw err;
   }
 }
 
@@ -265,7 +281,7 @@ export function usePushNotifications() {
 
         if (!subscription?.endpoint) {
           const errMsg =
-            'Браузер не зміг створити push-підписку. Якщо ви нещодавно вимикали сповіщення — зачекайте кілька хвилин і спробуйте ще раз. Також перевірте, що Google Push не заблоковано VPN / AdBlock.';
+            'Браузер не зміг створити push-підписку. Google тимчасово блокує нові підписки на цьому пристрої. Зачекайте 15–30 хвилин і спробуйте ще раз, АБО перевірте chrome://settings/content/notifications — сайт не має бути в заблокованих.';
           setSubscribeError(errMsg);
           return { success: false, error: errMsg };
         }
@@ -277,7 +293,7 @@ export function usePushNotifications() {
         console.error('[Push] Subscribe error:', err);
         const errMsg =
           err instanceof Error
-            ? err.message
+            ? 'Браузер не зміг створити push-підписку: ' + err.message
             : 'Помилка реєстрації підписки у push-сервісі браузера';
         setSubscribeError(errMsg);
         return { success: false, error: errMsg };
