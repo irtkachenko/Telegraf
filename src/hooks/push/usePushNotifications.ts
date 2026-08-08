@@ -167,6 +167,11 @@ export function usePushNotifications() {
   const pushSupported = canUsePush();
 
   const [subscribeError, setSubscribeError] = useState<string | null>(null);
+  const [permission, setPermission] = useState<NotificationPermission>(() =>
+    typeof window !== 'undefined' && 'Notification' in window
+      ? Notification.permission
+      : 'default',
+  );
 
   const {
     data: isSubscribed,
@@ -236,7 +241,7 @@ export function usePushNotifications() {
     },
     enabled: !!user?.id && pushSupported,
     retry: false,
-    staleTime: 5 * 60 * 1000,
+    staleTime: 30 * 1000,
   });
 
   const subscribeMutation = useMutation({
@@ -367,12 +372,26 @@ export function usePushNotifications() {
   useEffect(() => {
     if (!user || !pushSupported) return;
     const refreshState = () => {
+      if (typeof window !== 'undefined' && 'Notification' in window) {
+        setPermission(Notification.permission);
+      }
       queryClient.invalidateQueries({ queryKey: ['push-subscription', user?.id] });
     };
     window.addEventListener('focus', refreshState);
+    window.addEventListener('pageshow', refreshState);
+    document.addEventListener('visibilitychange', refreshState);
+
+    const permissionStatus = navigator.permissions?.query
+      ? navigator.permissions.query({ name: 'notifications' as PermissionName })
+      : null;
+    permissionStatus?.then((status) => status.addEventListener('change', refreshState)).catch(() => {});
+
     refreshState();
     return () => {
       window.removeEventListener('focus', refreshState);
+      window.removeEventListener('pageshow', refreshState);
+      document.removeEventListener('visibilitychange', refreshState);
+      permissionStatus?.then((status) => status.removeEventListener('change', refreshState)).catch(() => {});
     };
   }, [pushSupported, user, queryClient]);
 
@@ -380,17 +399,12 @@ export function usePushNotifications() {
     if (!pushSupported) return { kind: 'unsupported' };
     if (isCheckingSubscription) return { kind: 'loading' };
 
-    const permission =
-      typeof window !== 'undefined' && 'Notification' in window
-        ? Notification.permission
-        : 'default';
-
     if (permission === 'denied') return { kind: 'permission-denied' };
     if (permission === 'default') return { kind: 'needs-permission' };
     if (isSubscribed) return { kind: 'ready' };
 
     return { kind: 'needs-subscribe' };
-  }, [pushSupported, isCheckingSubscription, isSubscribed]);
+  }, [pushSupported, isCheckingSubscription, isSubscribed, permission]);
 
   return {
     isSubscribed: !!isSubscribed,
