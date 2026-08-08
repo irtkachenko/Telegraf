@@ -122,7 +122,7 @@ export function usePushNotifications() {
     queryFn: async () => {
       if (!user) return false;
 
-      if (!isStandalonePwa || !pushSupported) return false;
+      if (!pushSupported) return false;
 
       if (Notification.permission !== 'granted') return false;
 
@@ -161,7 +161,7 @@ export function usePushNotifications() {
 
       return true;
     },
-    enabled: !!user?.id && isStandalonePwa && pushSupported,
+    enabled: !!user?.id && pushSupported,
     retry: false,
     staleTime: 5 * 60 * 1000,
   });
@@ -170,7 +170,7 @@ export function usePushNotifications() {
     mutationFn: async (): Promise<boolean> => {
       if (!user) return false;
 
-      if (!isStandalonePwa || !pushSupported) return false;
+      if (!pushSupported) return false;
 
       if (Notification.permission === 'default') {
         const permission = await Notification.requestPermission();
@@ -219,7 +219,7 @@ export function usePushNotifications() {
 
   // Sync push subscription state when user logs in or permission changes
   useEffect(() => {
-    if (!user || !isStandalonePwa || !pushSupported) return;
+    if (!user || !pushSupported) return;
 
     const syncPushState = async () => {
       try {
@@ -268,11 +268,11 @@ export function usePushNotifications() {
     };
 
     syncPushState();
-  }, [user?.id, isStandalonePwa, pushSupported, queryClient, subscribeMutation]);
+  }, [user?.id, pushSupported, queryClient, subscribeMutation]);
 
   // Keep server subscription in sync when permission changes
   useEffect(() => {
-    if (!user || !isStandalonePwa || !pushSupported) return;
+    if (!user || !pushSupported) return;
 
     const syncPermissionState = () => {
       const currentPermission = Notification.permission;
@@ -318,7 +318,7 @@ export function usePushNotifications() {
         })
         .catch(() => {});
     };
-  }, [isStandalonePwa, pushSupported, queryClient, subscribeMutation, user]);
+  }, [pushSupported, queryClient, subscribeMutation, user]);
 
   // Request permission on first login (once per session)
   useEffect(() => {
