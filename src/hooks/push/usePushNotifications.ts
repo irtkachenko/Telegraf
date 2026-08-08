@@ -23,6 +23,22 @@ function hasPushConfig(): boolean {
   return false;
 }
 
+export function isIosDevice(): boolean {
+  if (typeof window === 'undefined') return false;
+  return (
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  );
+}
+
+export function isStandalonePwa(): boolean {
+  if (typeof window === 'undefined') return false;
+  return (
+    window.matchMedia('(display-mode: standalone)').matches ||
+    (navigator as unknown as { standalone?: boolean }).standalone === true
+  );
+}
+
 function isPushAPISupported(): boolean {
   return (
     typeof window !== 'undefined' &&
@@ -103,6 +119,10 @@ export function usePushNotifications() {
   const { user } = useSupabaseAuth();
   const queryClient = useQueryClient();
 
+  const isIos = isIosDevice();
+  const isStandalone = isStandalonePwa();
+  const isIosNonStandalone = isIos && !isStandalone;
+
   const browserSupportsPush = isPushAPISupported();
   const hasVapid = hasVapidKey();
   const pushSupported = canUsePush();
@@ -119,20 +139,23 @@ export function usePushNotifications() {
     queryKey: ['push-subscription', user?.id],
     queryFn: async () => {
       if (!user) return false;
-
       if (!pushSupported) return false;
-
+      if (typeof window === 'undefined' || !('Notification' in window)) return false;
       if (Notification.permission !== 'granted') return false;
 
       const registration = await navigator.serviceWorker.getRegistration('/sw.js');
-      if (!registration) return false;
+      const browserSub = await registration?.pushManager.getSubscription();
+      const browserEndpoint = browserSub?.endpoint;
 
-      const browserSubscription = await registration.pushManager.getSubscription();
-      const hasServerSub = await pushApi.isSubscribed().catch(() => false);
+      const dbStatus = await pushApi.isSubscribed(browserEndpoint).catch(() => ({
+        subscribed: false,
+        matchedEndpoint: false,
+      }));
 
-      if (browserSubscription && !hasServerSub) {
+      // Case 2 & Case 9: Browser has sub, but DB doesn't have this exact endpoint -> Auto sync to DB
+      if (browserSub && (!dbStatus.subscribed || !dbStatus.matchedEndpoint)) {
         try {
-          const payload = browserSubscription.toJSON() as unknown as PushSubscriptionPayload;
+          const payload = browserSub.toJSON() as unknown as PushSubscriptionPayload;
           if (payload?.endpoint) {
             await pushApi.subscribe(payload);
             return true;
@@ -142,7 +165,8 @@ export function usePushNotifications() {
         }
       }
 
-      if (!browserSubscription && hasServerSub) {
+      // Case 5: Permission granted, DB has sub for user, but browser on this device doesn't have sub yet
+      if (!browserSub && dbStatus.subscribed && Notification.permission === 'granted') {
         try {
           const freshReg = await navigator.serviceWorker.ready;
           const newSub = await getOrCreateBrowserSubscription(freshReg);
@@ -155,7 +179,7 @@ export function usePushNotifications() {
         }
       }
 
-      if (!browserSubscription && !hasServerSub) return false;
+      if (!browserSub && !dbStatus.subscribed) return false;
 
       return true;
     },
@@ -191,6 +215,7 @@ export function usePushNotifications() {
     },
     onSuccess: (subscribed) => {
       queryClient.setQueryData(['push-subscription', user?.id], subscribed);
+      queryClient.invalidateQueries({ queryKey: ['push-subscription', user?.id] });
     },
   });
 
@@ -204,14 +229,18 @@ export function usePushNotifications() {
       const subscription = await registration.pushManager.getSubscription();
 
       if (subscription) {
+        const endpoint = subscription.endpoint;
         await subscription.unsubscribe();
+        await pushApi.unsubscribe(endpoint);
+      } else {
+        await pushApi.unsubscribe();
       }
 
-      await pushApi.unsubscribe();
       return false;
     },
     onSuccess: (subscribed) => {
       queryClient.setQueryData(['push-subscription', user?.id], subscribed);
+      queryClient.invalidateQueries({ queryKey: ['push-subscription', user?.id] });
     },
   });
 
@@ -221,22 +250,19 @@ export function usePushNotifications() {
 
     const syncPushState = async () => {
       try {
-        // Wait for query to complete so hasDbSub is accurate
         if (isCheckingSubscription) return;
         const hasDbSub = queryClient.getQueryData(['push-subscription', user.id]) === true;
         const registration = await navigator.serviceWorker.getRegistration('/sw.js');
         const browserSub = await registration?.pushManager.getSubscription();
-        const permission = Notification.permission;
+        const permission = typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'default';
 
         // Case 1: Permission granted, but no subscription anywhere
-        // → PushSubscriptionPrompt banner will show
         if (permission === 'granted' && !browserSub && !hasDbSub) {
           return;
         }
 
-        // Case 2: Browser has sub but DB does not
+        // Case 2 & 9: Browser has sub but DB does not have it synced
         if (permission === 'granted' && browserSub && !hasDbSub) {
-          console.log('[Push] Browser has sub but DB does not, syncing...');
           const payload = browserSub.toJSON() as unknown as PushSubscriptionPayload;
           if (payload?.endpoint) {
             try {
@@ -250,14 +276,12 @@ export function usePushNotifications() {
         }
 
         // Case 3: Permission denied but DB has subscription
-        if (permission === 'denied' && hasDbSub) {
-          console.log('[Push] Permission denied but DB has sub, removing...');
-          await pushApi.unsubscribe();
+        if (permission === 'denied') {
+          setPermissionDenied(true);
           return;
         }
 
         // Case 4: Permission default, no subscription
-        // → PushSubscriptionPrompt banner will show
         if (permission === 'default' && !hasDbSub && !browserSub) {
           return;
         }
@@ -267,27 +291,15 @@ export function usePushNotifications() {
     };
 
     syncPushState();
-  }, [user?.id, pushSupported, queryClient, subscribeMutation, isCheckingSubscription]);
+  }, [user?.id, pushSupported, queryClient, isCheckingSubscription]);
 
   // Keep server subscription in sync when permission changes
   useEffect(() => {
     if (!user || !pushSupported) return;
 
     const syncPermissionState = () => {
-      const currentPermission = Notification.permission;
+      const currentPermission = typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'default';
       setPermissionDenied(currentPermission === 'denied');
-
-      // Case 3: Permission denied but DB has subscription → remove from DB
-      if (currentPermission === 'denied') {
-        pushApi.unsubscribe().catch(() => {});
-        queryClient.setQueryData(['push-subscription', user.id], false);
-        return;
-      }
-
-      // Other cases are handled by:
-      // - PushSubscriptionPrompt banner (needs user action)
-      // - syncPushState effect (auto-sync where possible)
-      // - useQuery queryFn (auto-recreate browser subscription)
     };
 
     const permissionStatus = navigator.permissions?.query
@@ -315,7 +327,7 @@ export function usePushNotifications() {
         })
         .catch(() => {});
     };
-  }, [pushSupported, queryClient, subscribeMutation, user]);
+  }, [pushSupported, user]);
 
   return {
     isSubscribed: !!isSubscribed,
@@ -327,6 +339,9 @@ export function usePushNotifications() {
     browserSupportsPush,
     hasVapid,
     permissionDenied,
+    isIos,
+    isStandalone,
+    isIosNonStandalone,
     subscribe: useCallback(() => subscribeMutation.mutateAsync(), [subscribeMutation]),
     unsubscribe: useCallback(() => unsubscribeMutation.mutateAsync(), [unsubscribeMutation]),
   };

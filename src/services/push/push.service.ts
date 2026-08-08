@@ -7,6 +7,11 @@ export type PushSubscriptionPayload = {
   };
 };
 
+export type CheckSubscriptionResult = {
+  subscribed: boolean;
+  matchedEndpoint: boolean;
+};
+
 export const pushApi = {
   /**
    * Save the browser push subscription for the current user.
@@ -20,15 +25,26 @@ export const pushApi = {
 
     if (!response.ok) {
       const body = await response.json().catch(() => null);
-      throw new Error(body?.error || 'Failed to save push subscription');
+      const errorMsg = body?.error || body?.details || 'Failed to save push subscription';
+      console.error(
+        '[Push API] Subscribe failed:',
+        response.status,
+        errorMsg,
+        'subscription keys:',
+        !!subscription.keys,
+      );
+      throw new Error(errorMsg);
     }
   },
 
   /**
-   * Remove the push subscription for the current user.
+   * Remove the push subscription for the current user (optionally filtered by endpoint).
    */
-  unsubscribe: async (): Promise<void> => {
-    const response = await fetch('/api/push/subscribe', {
+  unsubscribe: async (endpoint?: string): Promise<void> => {
+    const url = endpoint
+      ? `/api/push/subscribe?endpoint=${encodeURIComponent(endpoint)}`
+      : '/api/push/subscribe';
+    const response = await fetch(url, {
       method: 'DELETE',
     });
 
@@ -40,9 +56,13 @@ export const pushApi = {
 
   /**
    * Check if the current user has an active push subscription.
+   * If endpoint is provided, also checks if this specific endpoint is registered in DB.
    */
-  isSubscribed: async (): Promise<boolean> => {
-    const response = await fetch('/api/push/subscribe', {
+  isSubscribed: async (endpoint?: string): Promise<CheckSubscriptionResult> => {
+    const url = endpoint
+      ? `/api/push/subscribe?endpoint=${encodeURIComponent(endpoint)}`
+      : '/api/push/subscribe';
+    const response = await fetch(url, {
       method: 'GET',
     });
 
@@ -51,7 +71,10 @@ export const pushApi = {
       throw new Error(body?.error || 'Failed to check push subscription');
     }
 
-    const body = (await response.json()) as { subscribed?: boolean };
-    return body.subscribed === true;
+    const body = (await response.json()) as { subscribed?: boolean; matchedEndpoint?: boolean };
+    return {
+      subscribed: body.subscribed === true,
+      matchedEndpoint: body.matchedEndpoint === true,
+    };
   },
 };

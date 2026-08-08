@@ -1,5 +1,5 @@
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
 function getAdminClient() {
@@ -13,7 +13,7 @@ function getAdminClient() {
   return createSupabaseClient(supabaseUrl, serviceRoleKey);
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
     const {
@@ -33,9 +33,11 @@ export async function GET() {
       );
     }
 
-    const { count, error } = await adminClient
+    const endpointParam = request.nextUrl.searchParams.get('endpoint');
+
+    const { data: rows, error } = await adminClient
       .from('user_push_subscriptions')
-      .select('id', { count: 'exact', head: true })
+      .select('id, subscription')
       .eq('user_id', user.id);
 
     if (error) {
@@ -43,7 +45,20 @@ export async function GET() {
       return NextResponse.json({ error: 'Failed to check subscription' }, { status: 500 });
     }
 
-    return NextResponse.json({ subscribed: (count ?? 0) > 0 });
+    const hasAnySub = rows && rows.length > 0;
+
+    if (!endpointParam) {
+      return NextResponse.json({ subscribed: hasAnySub, matchedEndpoint: hasAnySub });
+    }
+
+    const matchedRow = rows?.find(
+      (r: { subscription?: { endpoint?: string } }) => r.subscription?.endpoint === endpointParam,
+    );
+
+    return NextResponse.json({
+      subscribed: hasAnySub,
+      matchedEndpoint: !!matchedRow,
+    });
   } catch (error) {
     console.error('Push subscription status error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -77,27 +92,46 @@ export async function POST(request: Request) {
       );
     }
 
-    const { error } = await adminClient.from('user_push_subscriptions').upsert(
-      {
-        user_id: user.id,
-        subscription,
-      },
-      { onConflict: 'user_id' },
-    );
+    // First delete any existing subscription with this exact endpoint (even if bound to another user/old session)
+    await adminClient
+      .from('user_push_subscriptions')
+      .delete()
+      .filter('subscription->>endpoint', 'eq', subscription.endpoint);
 
-    if (error) {
-      console.error('Failed to save push subscription:', error);
-      return NextResponse.json({ error: 'Failed to save subscription' }, { status: 500 });
+    // Try inserting new multi-device row
+    const { error: insertError } = await adminClient.from('user_push_subscriptions').insert({
+      user_id: user.id,
+      subscription,
+    });
+
+    if (insertError) {
+      // Fallback: If unique(user_id) constraint is still present in DB, fallback to upsert
+      const { error: upsertError } = await adminClient.from('user_push_subscriptions').upsert(
+        {
+          user_id: user.id,
+          subscription,
+        },
+        { onConflict: 'user_id' },
+      );
+
+      if (upsertError) {
+        console.error('Failed to save push subscription fallback:', upsertError);
+        return NextResponse.json(
+          { error: 'Failed to save subscription', details: upsertError.message },
+          { status: 500 },
+        );
+      }
     }
 
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Push subscribe error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    const message = error instanceof Error ? error.message : 'Internal server error';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 
-export async function DELETE() {
+export async function DELETE(request: NextRequest) {
   try {
     const supabase = await createClient();
     const {
@@ -117,10 +151,15 @@ export async function DELETE() {
       );
     }
 
-    const { error } = await adminClient
-      .from('user_push_subscriptions')
-      .delete()
-      .eq('user_id', user.id);
+    const endpointParam = request.nextUrl.searchParams.get('endpoint');
+
+    let query = adminClient.from('user_push_subscriptions').delete().eq('user_id', user.id);
+
+    if (endpointParam) {
+      query = query.filter('subscription->>endpoint', 'eq', endpointParam);
+    }
+
+    const { error } = await query;
 
     if (error) {
       console.error('Failed to delete push subscription:', error);

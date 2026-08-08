@@ -60,19 +60,16 @@ Deno.serve(async (req: Request) => {
       return new Response(JSON.stringify({ success: true, message: 'Skipped' }), { headers: corsHeaders })
     }
 
-    const { data: subscriptionRow } = await supabase
+    const { data: subscriptionRows } = await supabase
       .from('user_push_subscriptions')
-      .select('subscription, user_id')
+      .select('id, subscription, user_id')
       .eq('user_id', recipientId)
-      .maybeSingle()
 
-    console.log(`[PUSH DEBUG] subscriptionRow for recipientId=${recipientId}:`, subscriptionRow ? 'found' : 'not found')
+    console.log(`[PUSH DEBUG] subscriptionRows for recipientId=${recipientId}: count=${subscriptionRows?.length ?? 0}`)
 
-    if (!subscriptionRow) {
+    if (!subscriptionRows || subscriptionRows.length === 0) {
       return new Response(JSON.stringify({ success: true, message: 'No subscription' }), { headers: corsHeaders })
     }
-
-    const subscription = subscriptionRow.subscription
 
     const { data: sender } = await supabase
       .from('users')
@@ -150,19 +147,23 @@ Deno.serve(async (req: Request) => {
       TTL: 86400,
     }
 
-    try {
-      await webpush.sendNotification(subscription, notificationPayload, pushOptions)
-      console.log(`Push sent to ${recipientId}`)
-    } catch (pushError: any) {
-      const status = pushError?.statusCode
-      // 404 = endpoint not found, 410 = subscription expired, 403 = VAPID mismatch
-      if (status === 404 || status === 410 || status === 403) {
-        console.log(`Removing stale push subscription for ${recipientId} (HTTP ${status})`)
-        await supabase.from('user_push_subscriptions').delete().eq('user_id', recipientId)
-      } else {
-        console.error('Push error:', pushError)
+    const sendPromises = subscriptionRows.map(async (row) => {
+      try {
+        await webpush.sendNotification(row.subscription, notificationPayload, pushOptions)
+        console.log(`Push sent to ${recipientId} (sub id=${row.id})`)
+      } catch (pushError: any) {
+        const status = pushError?.statusCode
+        // 404 = endpoint not found, 410 = subscription expired, 403 = VAPID mismatch
+        if (status === 404 || status === 410 || status === 403) {
+          console.log(`Removing stale push subscription id=${row.id} for ${recipientId} (HTTP ${status})`)
+          await supabase.from('user_push_subscriptions').delete().eq('id', row.id)
+        } else {
+          console.error(`Push error for sub id=${row.id}:`, pushError)
+        }
       }
-    }
+    })
+
+    await Promise.allSettled(sendPromises)
 
     return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   } catch (error: any) {
