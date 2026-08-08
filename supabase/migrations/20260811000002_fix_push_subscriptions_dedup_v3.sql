@@ -1,8 +1,12 @@
 -- ============================================================
--- Виправлення push-підписок:
--- 1) Видалення дублікатів (однаковий endpoint для одного юзера).
--- 2) Перепис тригера на supabase_functions.http_request()
---    замість net.http_post з хардкодом service_role_key.
+-- Виправлення push-підписок (v3):
+-- Попередні спроби:
+--   v1 (20260811000000) — extensions.supabase_functions.http_request
+--      -> розширення не встановлено (cross-database references)
+--   v2 (20260811000001) — ALTER ROLE SET
+--      -> permission denied
+-- Ця міграція використовує net.http_post (pg_net) з COALESCE fallback
+-- на хардкод (як працювало в 20260807000005).
 -- ============================================================
 
 -- 1) Видалити дублікати: лишити один рядок на унікальний (user_id, endpoint).
@@ -20,21 +24,7 @@ where a.user_id = b.user_id
 create unique index if not exists idx_user_push_subscriptions_user_endpoint
   on public.user_push_subscriptions (user_id, (subscription->>'endpoint'));
 
--- 3) Налаштувати app.supabase_url для поточного проєкту.
---    Це дозволяє supabase_functions.http_request() знати URL проєкту.
---    (URL не є секретним — він публічний.)
-do $$
-begin
-  if not exists (
-    select 1 from pg_settings where name = 'app.supabase_url'
-  ) then
-    perform set_config('app.supabase_url', 'https://qdvtruuujxmjmmtbsizq.supabase.co', false);
-  end if;
-end $$;
-
--- 4) Переписати тригер на supabase_functions.http_request().
---    Ця функція автоматично підставляє service_role key,
---    тому не потрібно хардкодити ключ у SQL.
+-- 3) Переписати тригер на net.http_post з COALESCE fallback.
 create or replace function public.send_push_notification()
 returns trigger
 language plpgsql
@@ -46,6 +36,7 @@ declare
   chat_record record;
   payload jsonb;
   v_supabase_url text;
+  v_service_role_key text;
 begin
   -- Only process if this is a new message (not an update)
   if tg_op = 'INSERT' then
@@ -76,19 +67,23 @@ begin
       'chatName', 'Чат'
     );
 
-    -- Get Supabase URL (fallback to hardcoded project URL — it's public, not secret)
+    -- Get Supabase URL and service role key with hardcoded fallback
     v_supabase_url := coalesce(
       current_setting('app.supabase_url', true),
       'https://qdvtruuujxmjmmtbsizq.supabase.co'
     );
+    v_service_role_key := coalesce(
+      current_setting('app.service_role_key', true),
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFkdnRydXV1anhtam1tdGJzaXpxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2OTE2Mzg5NywiZXhwIjoyMDg0NzM5ODk3fQ.4Zi2WvwMjxx-1Kh6haKGs74M1HCWtWWeWQBXuOtb5BM'
+    );
 
-    -- Call Edge Function asynchronously using supabase_functions.http_request.
-    -- This function automatically adds the service_role key header,
-    -- so we don't need to hardcode it in SQL.
-    perform extensions.supabase_functions.http_request(
+    -- Call Edge Function asynchronously using net.http_post (pg_net)
+    perform net.http_post(
       url := v_supabase_url || '/functions/v1/send-push-notification',
-      method := 'POST',
-      headers := jsonb_build_object('Content-Type', 'application/json'),
+      headers := jsonb_build_object(
+        'Content-Type', 'application/json',
+        'Authorization', 'Bearer ' || v_service_role_key
+      ),
       body := payload
     );
 
@@ -107,8 +102,8 @@ create trigger on_message_insert
   for each row
   execute function public.send_push_notification();
 
--- Grant execute permission on supabase_functions.http_request
-grant execute on function extensions.supabase_functions.http_request to postgres, service_role;
+-- Grant execute permission on net.http_post
+grant execute on function net.http_post to postgres, service_role, anon, authenticated;
 
 -- Comment
 comment on function send_push_notification() is 'Triggers push notification via Edge Function when a new message is inserted';
