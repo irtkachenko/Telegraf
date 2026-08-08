@@ -14,6 +14,7 @@ const PROMPT_SESSION_KEY = 'telegraf:push-prompt-dismissed';
 export default function PushSubscriptionPrompt() {
   const { state, isSubscribing, isStandalone, isIosNonStandalone, subscribeError, subscribe } =
     usePushNotifications();
+  const isAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
   const [dismissed, setDismissed] = useState(false);
 
   // Reset dismissed state when subscription state changes
@@ -136,8 +137,17 @@ export default function PushSubscriptionPrompt() {
             <div className="mt-2 rounded-lg bg-[#6366f1]/10 border border-[#6366f1]/25 p-3 text-[#c7d2fe] text-xs leading-relaxed space-y-1.5">
               <p className="font-semibold text-white">Щоб сповіщення запрацювали:</p>
               <p>1. Зачекайте 15–30 хвилин (Google тимчасово блокує нові підписки).</p>
-              <p>2. Або: іконка 🔒 або ⓘ біля адреси → «Дані сайту» → «Очистити».</p>
-              <p>3. Перезапустіть додаток з головного екрана і натисніть «Увімкнути» ще раз.</p>
+              {isAndroid ? (
+                <>
+                  <p>2. Або: іконка 🔒 або ⓘ біля адреси → «Дані сайту» → «Очистити».</p>
+                  <p>3. Перезапустіть додаток з головного екрана і натисніть «Увімкнути» ще раз.</p>
+                </>
+              ) : (
+                <p>
+                  2. Або відкрийте chrome://settings/content/notifications і дозвольте цей домен,
+                  потім натисніть «Увімкнути» ще раз.
+                </p>
+              )}
             </div>
           )}
 

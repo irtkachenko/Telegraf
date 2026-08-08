@@ -14,6 +14,7 @@ import { usePushNotifications } from '@/hooks/push/usePushNotifications';
  */
 export default function PushSubscriptionGuard() {
   const { state, isStandalone } = usePushNotifications();
+  const isAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
   const [dismissed, setDismissed] = useState(false);
 
   // Reset dismissed state when permission changes
@@ -74,12 +75,22 @@ export default function PushSubscriptionGuard() {
           <p className="text-xs text-gray-300 mt-1 font-normal leading-snug">
             Увімкніть сповіщення в налаштуваннях, щоб отримувати повідомлення про нові чати.
           </p>
-          <div className="mt-2 rounded-lg bg-amber-500/10 border border-amber-500/20 p-2.5 text-amber-200/90 text-xs leading-relaxed space-y-1">
-            <p className="font-semibold text-amber-200">Як увімкнути (Android / PWA):</p>
-            <p>1. Натисніть ⋮ (меню) у правому верхньому куті додатка.</p>
-            <p>2. Оберіть «Налаштування сайту» (або «Дані сайту»).</p>
-            <p>3. Включіть «Сповіщення» (Notifications).</p>
-          </div>
+
+          {isAndroid ? (
+            <div className="mt-2 rounded-lg bg-amber-500/10 border border-amber-500/20 p-2.5 text-amber-200/90 text-xs leading-relaxed space-y-1">
+              <p className="font-semibold text-amber-200">Як увімкнути (Android / PWA):</p>
+              <p>1. Натисніть ⋮ (меню) у правому верхньому куті додатка.</p>
+              <p>2. Оберіть «Налаштування сайту» (або «Дані сайту»).</p>
+              <p>3. Включіть «Сповіщення» (Notifications).</p>
+            </div>
+          ) : (
+            <div className="mt-2 rounded-lg bg-amber-500/10 border border-amber-500/20 p-2.5 text-amber-200/90 text-xs leading-relaxed space-y-1">
+              <p className="font-semibold text-amber-200">Як увімкнути (комп'ютер):</p>
+              <p>1. Відкрийте chrome://settings/content/notifications.</p>
+              <p>2. Знайдіть цей домен у списку.</p>
+              <p>3. Змініть «Заборонено» на «Дозволено».</p>
+            </div>
+          )}
           <div className="flex items-center gap-2 mt-3">
             <button
               type="button"
