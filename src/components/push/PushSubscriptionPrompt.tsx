@@ -12,7 +12,7 @@ const PROMPT_SESSION_KEY = 'telegraf:push-prompt-dismissed';
  * no subscription exists). Works on mobile (iOS/Android PWA) and desktop.
  */
 export default function PushSubscriptionPrompt() {
-  const { state, isSubscribing, isIosNonStandalone, subscribeError, subscribe } =
+  const { state, isSubscribing, isStandalone, isIosNonStandalone, subscribeError, subscribe } =
     usePushNotifications();
   const [dismissed, setDismissed] = useState(false);
 
@@ -87,6 +87,7 @@ export default function PushSubscriptionPrompt() {
     state.kind === 'unsupported' ||
     state.kind === 'loading' ||
     isDenied ||
+    !isStandalone ||
     dismissed ||
     isSessionDismissed
   ) {
@@ -128,6 +129,15 @@ export default function PushSubscriptionPrompt() {
             <div className="mt-2 p-2 rounded-lg bg-red-500/10 border border-red-500/20 text-[#f87171] text-xs flex items-start gap-1.5 leading-snug">
               <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
               <span>{subscribeError}</span>
+            </div>
+          )}
+
+          {subscribeError && (
+            <div className="mt-2 rounded-lg bg-[#6366f1]/10 border border-[#6366f1]/25 p-3 text-[#c7d2fe] text-xs leading-relaxed space-y-1.5">
+              <p className="font-semibold text-white">Щоб сповіщення запрацювали:</p>
+              <p>1. Зачекайте 15–30 хвилин (Google тимчасово блокує нові підписки).</p>
+              <p>2. Або: іконка 🔒 або ⓘ біля адреси → «Дані сайту» → «Очистити».</p>
+              <p>3. Перезапустіть додаток з головного екрана і натисніть «Увімкнути» ще раз.</p>
             </div>
           )}
 

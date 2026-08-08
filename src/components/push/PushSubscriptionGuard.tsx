@@ -13,7 +13,7 @@ import { usePushNotifications } from '@/hooks/push/usePushNotifications';
  * settings. This banner guides them to do so.
  */
 export default function PushSubscriptionGuard() {
-  const { state } = usePushNotifications();
+  const { state, isStandalone } = usePushNotifications();
   const [dismissed, setDismissed] = useState(false);
 
   // Reset dismissed state when permission changes
@@ -23,8 +23,10 @@ export default function PushSubscriptionGuard() {
     }
   }, [state.kind]);
 
-  // Don't show if subscribed or not denied
-  if (state.kind === 'ready' || state.kind !== 'permission-denied' || dismissed) return null;
+  // Don't show if subscribed, not denied, in a regular browser (not standalone PWA),
+  // or dismissed this session
+  if (state.kind === 'ready' || state.kind !== 'permission-denied' || !isStandalone || dismissed)
+    return null;
 
   const openSettings = () => {
     // Try to open browser notification settings
@@ -70,8 +72,14 @@ export default function PushSubscriptionGuard() {
             Сповіщення вимкнені
           </h4>
           <p className="text-xs text-gray-300 mt-1 font-normal leading-snug">
-            Увімкніть сповіщення в налаштуваннях браузера, щоб отримувати повідомлення про нові чати.
+            Увімкніть сповіщення в налаштуваннях, щоб отримувати повідомлення про нові чати.
           </p>
+          <div className="mt-2 rounded-lg bg-amber-500/10 border border-amber-500/20 p-2.5 text-amber-200/90 text-xs leading-relaxed space-y-1">
+            <p className="font-semibold text-amber-200">Як увімкнути (Android / PWA):</p>
+            <p>1. Натисніть ⋮ (меню) у правому верхньому куті додатка.</p>
+            <p>2. Оберіть «Налаштування сайту» (або «Дані сайту»).</p>
+            <p>3. Включіть «Сповіщення» (Notifications).</p>
+          </div>
           <div className="flex items-center gap-2 mt-3">
             <button
               type="button"
