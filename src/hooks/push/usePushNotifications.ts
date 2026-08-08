@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useSupabaseAuth } from '@/components/auth/AuthProvider';
 import { isStandaloneMode } from '@/hooks/pwa/usePwaInstall';
 import { pushApi, type PushSubscriptionPayload } from '@/services/push/push.service';
@@ -108,6 +108,11 @@ export function usePushNotifications() {
   const browserSupportsPush = isPushAPISupported();
   const hasVapid = hasVapidKey();
   const pushSupported = canUsePush();
+  const [permissionDenied, setPermissionDenied] = useState(
+    typeof window !== 'undefined' &&
+      'Notification' in window &&
+      Notification.permission === 'denied',
+  );
 
   const {
     data: isSubscribed,
@@ -270,14 +275,17 @@ export function usePushNotifications() {
     if (!user || !isStandalonePwa || !pushSupported) return;
 
     const syncPermissionState = () => {
-      if (Notification.permission === 'denied') {
+      const currentPermission = Notification.permission;
+      setPermissionDenied(currentPermission === 'denied');
+
+      if (currentPermission === 'denied') {
         pushApi.unsubscribe().catch(() => {});
         queryClient.setQueryData(['push-subscription', user.id], false);
         return;
       }
 
       if (
-        Notification.permission === 'granted' &&
+        currentPermission === 'granted' &&
         !subscribeMutation.isPending &&
         queryClient.getQueryData(['push-subscription', user.id]) !== true
       ) {
@@ -346,6 +354,7 @@ export function usePushNotifications() {
     pushSupported,
     browserSupportsPush,
     hasVapid,
+    permissionDenied,
     subscribe: useCallback(() => subscribeMutation.mutateAsync(), [subscribeMutation]),
     unsubscribe: useCallback(() => unsubscribeMutation.mutateAsync(), [unsubscribeMutation]),
   };
