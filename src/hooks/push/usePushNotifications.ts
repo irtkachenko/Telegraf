@@ -1,12 +1,22 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSupabaseAuth } from '@/components/auth/AuthProvider';
 import { pushApi, type PushSubscriptionPayload } from '@/services/push/push.service';
 
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+const ENDPOINT_STORAGE_KEY = 'telegraf:push-endpoint';
 let didWarnMissingVapidKey = false;
+
+export type PushState =
+  | { kind: 'unsupported' }
+  | { kind: 'loading' }
+  | { kind: 'ready' }
+  | { kind: 'needs-permission' }
+  | { kind: 'needs-subscribe' }
+  | { kind: 'needs-db-sync' }
+  | { kind: 'permission-denied' };
 
 function hasVapidKey(): boolean {
   return !!VAPID_PUBLIC_KEY && VAPID_PUBLIC_KEY.trim().length > 0;
@@ -16,7 +26,9 @@ function hasPushConfig(): boolean {
   if (hasVapidKey()) return true;
 
   if (!didWarnMissingVapidKey && typeof window !== 'undefined') {
-    console.warn('NEXT_PUBLIC_VAPID_PUBLIC_KEY is not set or empty. Push notifications are disabled.');
+    console.warn(
+      'NEXT_PUBLIC_VAPID_PUBLIC_KEY is not set or empty. Push notifications are disabled.',
+    );
     didWarnMissingVapidKey = true;
   }
 
@@ -52,16 +64,23 @@ function canUsePush(): boolean {
   return isPushAPISupported() && hasPushConfig();
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
+  const cleanBase64 = base64String.trim().replace(/["']/g, '');
+  const padding = '='.repeat((4 - (cleanBase64.length % 4)) % 4);
+  const base64 = (cleanBase64 + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const buffer = new ArrayBuffer(rawData.length);
+  const outputArray = new Uint8Array(buffer);
+
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
 }
 
 async function getPushRegistration(): Promise<ServiceWorkerRegistration> {
   const registration = await navigator.serviceWorker.register('/sw.js');
 
-  // Ensure the service worker is active and controlling the page before
-  // subscribing. A stale/inactive SW can cause pushManager.subscribe() to
-  // fail with "Registration failed - push service error".
   if (!navigator.serviceWorker.controller) {
     await new Promise<void>((resolve) => {
       const onControllerChange = () => {
@@ -77,88 +96,11 @@ async function getPushRegistration(): Promise<ServiceWorkerRegistration> {
   return navigator.serviceWorker.ready;
 }
 
-
-function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
-  const cleanBase64 = base64String.trim().replace(/["']/g, '');
-  const padding = '='.repeat((4 - (cleanBase64.length % 4)) % 4);
-  const base64 = (cleanBase64 + padding).replace(/-/g, '+').replace(/_/g, '/');
-  const rawData = window.atob(base64);
-  const buffer = new ArrayBuffer(rawData.length);
-  const outputArray = new Uint8Array(buffer);
-
-  for (let i = 0; i < rawData.length; ++i) {
-    outputArray[i] = rawData.charCodeAt(i);
-  }
-  return outputArray;
-}
-
 /**
- * Fully clears any existing push subscription on this device.
- * Waits for unsubscribe() to complete and adds a small delay so the
- * browser has time to propagate the removal to the push service (FCM).
- * This avoids the "Registration failed - push service error" that occurs
- * when subscribe() is called too quickly after unsubscribe() on Android.
+ * Get the existing browser push subscription (if any), WITHOUT destroying it.
+ * We NEVER call unsubscribe() before subscribe() — doing so triggers a long
+ * cooldown in FCM/Chrome on Android that makes new subscriptions fail.
  */
-async function clearExistingSubscription(
-  registration: ServiceWorkerRegistration,
-): Promise<void> {
-  try {
-    const existing = await registration.pushManager.getSubscription();
-    if (existing) {
-      try {
-        await existing.unsubscribe();
-      } catch (unsubErr) {
-        console.warn('[Push] Failed to unsubscribe existing subscription:', unsubErr);
-      }
-      // Give the browser time to fully remove the old subscription from FCM
-      await sleep(500);
-    }
-  } catch (err) {
-    console.warn('[Push] Failed to read existing subscription:', err);
-  }
-}
-
-/**
- * Attempts to create a fresh browser push subscription with a robust retry
- * loop. On Android Chrome, a stale/broken subscription can cause
- * "Registration failed - push service error". We fully clear the old
- * subscription, wait, and retry a few times before giving up.
- */
-async function createFreshBrowserSubscription(
-  registration: ServiceWorkerRegistration,
-): Promise<PushSubscriptionPayload | null> {
-  if (!isPushAPISupported() || !hasVapidKey()) return null;
-
-  const applicationServerKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY!);
-
-  // Try up to 3 times, fully clearing the old subscription between attempts.
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    try {
-      await clearExistingSubscription(registration);
-
-      const subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey,
-      });
-
-      return subscription.toJSON() as unknown as PushSubscriptionPayload;
-    } catch (err) {
-      console.warn(
-        `[Push] Subscription attempt ${attempt}/3 failed:`,
-        err instanceof Error ? err.message : err,
-      );
-      if (attempt < 3) {
-        // Wait before retrying so the push service can settle.
-        await sleep(700);
-      }
-    }
-  }
-
-  console.error('[Push] Browser push service error: could not create a subscription after 3 attempts');
-  return null;
-}
-
-
 async function getOrCreateBrowserSubscription(
   registration: ServiceWorkerRegistration,
 ): Promise<PushSubscriptionPayload | null> {
@@ -169,7 +111,47 @@ async function getOrCreateBrowserSubscription(
     return existing.toJSON() as unknown as PushSubscriptionPayload;
   }
 
-  return createFreshBrowserSubscription(registration);
+  if (!hasVapidKey()) return null;
+
+  try {
+    const subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY!),
+    });
+    return subscription.toJSON() as unknown as PushSubscriptionPayload;
+  } catch (err) {
+    console.warn(
+      '[Push] Failed to create a new subscription:',
+      err instanceof Error ? err.message : err,
+    );
+    return null;
+  }
+}
+
+/**
+ * Store the endpoint of the last known subscription for THIS device.
+ * Used to detect dead DB rows when the browser subscription disappears.
+ */
+function rememberEndpoint(endpoint: string | null): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (endpoint) {
+      localStorage.setItem(ENDPOINT_STORAGE_KEY, endpoint);
+    } else {
+      localStorage.removeItem(ENDPOINT_STORAGE_KEY);
+    }
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+function getRememberedEndpoint(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return localStorage.getItem(ENDPOINT_STORAGE_KEY);
+  } catch {
+    return null;
+  }
 }
 
 export function usePushNotifications() {
@@ -183,11 +165,7 @@ export function usePushNotifications() {
   const browserSupportsPush = isPushAPISupported();
   const hasVapid = hasVapidKey();
   const pushSupported = canUsePush();
-  const [permissionDenied, setPermissionDenied] = useState(
-    typeof window !== 'undefined' &&
-      'Notification' in window &&
-      Notification.permission === 'denied',
-  );
+
   const [subscribeError, setSubscribeError] = useState<string | null>(null);
 
   const {
@@ -203,19 +181,19 @@ export function usePushNotifications() {
 
       const registration = await navigator.serviceWorker.getRegistration('/sw.js');
       const browserSub = await registration?.pushManager.getSubscription();
-      const browserEndpoint = browserSub?.endpoint;
+      const browserEndpoint = browserSub?.endpoint ?? null;
 
-      const dbStatus = await pushApi.isSubscribed(browserEndpoint).catch(() => ({
+      const dbStatus = await pushApi.isSubscribed(browserEndpoint ?? undefined).catch(() => ({
         subscribed: false,
         matchedEndpoint: false,
       }));
 
-      // Case 2 & Case 9: Browser has sub, but DB doesn't have this exact endpoint -> Auto sync to DB
       if (browserSub && (!dbStatus.subscribed || !dbStatus.matchedEndpoint)) {
         try {
           const payload = browserSub.toJSON() as unknown as PushSubscriptionPayload;
           if (payload?.endpoint) {
             await pushApi.subscribe(payload);
+            rememberEndpoint(payload.endpoint);
             return true;
           }
         } catch {
@@ -223,13 +201,28 @@ export function usePushNotifications() {
         }
       }
 
-      // Case 5: Permission granted, DB has sub for user, but browser on this device doesn't have sub yet
-      if (!browserSub && dbStatus.subscribed && Notification.permission === 'granted') {
+      if (!browserSub && Notification.permission === 'granted') {
+        const rememberedEndpoint = getRememberedEndpoint();
+        const thisDeviceHadSub = rememberedEndpoint && dbStatus.matchedEndpoint;
+
+        if (thisDeviceHadSub) {
+          try {
+            await pushApi.unsubscribe(rememberedEndpoint!);
+          } catch {
+            // Ignore cleanup errors
+          }
+        }
+
+        if (dbStatus.subscribed && !thisDeviceHadSub) {
+          return false;
+        }
+
         try {
           const freshReg = await navigator.serviceWorker.ready;
           const newSub = await getOrCreateBrowserSubscription(freshReg);
           if (newSub?.endpoint) {
             await pushApi.subscribe(newSub);
+            rememberEndpoint(newSub.endpoint);
             return true;
           }
         } catch {
@@ -263,17 +256,17 @@ export function usePushNotifications() {
         }
 
         const registration = await getPushRegistration();
-        const subscription = await createFreshBrowserSubscription(registration);
+        const subscription = await getOrCreateBrowserSubscription(registration);
 
         if (!subscription?.endpoint) {
           const errMsg =
-            'Не вдалося активувати сповіщення на цьому пристрої. Перезавантажте додаток і спробуйте ще раз. Якщо не допоможе — видаліть додаток з головного екрана та додайте заново (це скидає налаштування push). Також перевірте, що Google Push не заблоковано VPN / AdBlock.';
+            'Браузер не зміг створити push-підписку. Якщо ви нещодавно вимикали сповіщення — зачекайте кілька хвилин і спробуйте ще раз. Також перевірте, що Google Push не заблоковано VPN / AdBlock.';
           setSubscribeError(errMsg);
           return { success: false, error: errMsg };
         }
 
-
         await pushApi.subscribe(subscription);
+        rememberEndpoint(subscription.endpoint);
         return { success: true };
       } catch (err: unknown) {
         console.error('[Push] Subscribe error:', err);
@@ -296,7 +289,6 @@ export function usePushNotifications() {
   const unsubscribeMutation = useMutation({
     mutationFn: async (): Promise<boolean> => {
       if (!user) return false;
-
       if (!pushSupported) return false;
 
       const registration = await navigator.serviceWorker.ready;
@@ -306,8 +298,10 @@ export function usePushNotifications() {
         const endpoint = subscription.endpoint;
         await subscription.unsubscribe();
         await pushApi.unsubscribe(endpoint);
+        rememberEndpoint(null);
       } else {
         await pushApi.unsubscribe();
+        rememberEndpoint(null);
       }
 
       return false;
@@ -323,81 +317,80 @@ export function usePushNotifications() {
     if (!user || !pushSupported) return;
 
     const syncPushState = async () => {
-      try {
-        if (isCheckingSubscription) return;
-        const hasDbSub = queryClient.getQueryData(['push-subscription', user.id]) === true;
-        const registration = await navigator.serviceWorker.getRegistration('/sw.js');
-        const browserSub = await registration?.pushManager.getSubscription();
-        const permission = typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'default';
+      if (isCheckingSubscription) return;
+      const hasDbSub = queryClient.getQueryData(['push-subscription', user.id]) === true;
+      const registration = await navigator.serviceWorker.getRegistration('/sw.js');
+      const browserSub = await registration?.pushManager.getSubscription();
+      const permission =
+        typeof window !== 'undefined' && 'Notification' in window
+          ? Notification.permission
+          : 'default';
 
-        if (permission === 'granted' && !browserSub && !hasDbSub) {
-          return;
-        }
+      if (permission === 'granted' && !browserSub && !hasDbSub) {
+        return;
+      }
 
-        if (permission === 'granted' && browserSub && !hasDbSub) {
-          const payload = browserSub.toJSON() as unknown as PushSubscriptionPayload;
-          if (payload?.endpoint) {
-            try {
-              await pushApi.subscribe(payload);
-              queryClient.setQueryData(['push-subscription', user.id], true);
-            } catch {
-              // ignore sync errors
-            }
+      if (permission === 'granted' && browserSub && !hasDbSub) {
+        const payload = browserSub.toJSON() as unknown as PushSubscriptionPayload;
+        if (payload?.endpoint) {
+          try {
+            await pushApi.subscribe(payload);
+            rememberEndpoint(payload.endpoint);
+            queryClient.setQueryData(['push-subscription', user.id], true);
+          } catch {
+            // ignore sync errors
           }
-          return;
         }
+        return;
+      }
 
-        if (permission === 'denied') {
-          setPermissionDenied(true);
-          return;
-        }
+      if (permission === 'denied' || (permission === 'default' && !hasDbSub && !browserSub)) {
+        return;
+      }
 
-        if (permission === 'default' && !hasDbSub && !browserSub) {
-          return;
+      if (permission === 'granted' && !browserSub && hasDbSub) {
+        const rememberedEndpoint = getRememberedEndpoint();
+        if (rememberedEndpoint) {
+          try {
+            await pushApi.unsubscribe(rememberedEndpoint);
+            queryClient.setQueryData(['push-subscription', user.id], false);
+          } catch {
+            // ignore cleanup errors
+          }
         }
-      } catch (error) {
-        console.error('[Push] Sync error:', error);
       }
     };
-
-    syncPushState();
+    void syncPushState();
   }, [user?.id, pushSupported, queryClient, isCheckingSubscription]);
 
-  // Keep server subscription in sync when permission changes
+  // Invalidate subscription state whenever permission changes
   useEffect(() => {
     if (!user || !pushSupported) return;
-
-    const syncPermissionState = () => {
-      const currentPermission = typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'default';
-      setPermissionDenied(currentPermission === 'denied');
+    const refreshState = () => {
+      queryClient.invalidateQueries({ queryKey: ['push-subscription', user?.id] });
     };
-
-    const permissionStatus = navigator.permissions?.query
-      ? navigator.permissions.query({ name: 'notifications' as PermissionName })
-      : null;
-
-    permissionStatus
-      ?.then((status) => {
-        status.addEventListener('change', syncPermissionState);
-      })
-      .catch(() => {});
-
-    window.addEventListener('focus', syncPermissionState);
-    window.addEventListener('pageshow', syncPermissionState);
-    document.addEventListener('visibilitychange', syncPermissionState);
-    syncPermissionState();
-
+    window.addEventListener('focus', refreshState);
+    refreshState();
     return () => {
-      window.removeEventListener('focus', syncPermissionState);
-      window.removeEventListener('pageshow', syncPermissionState);
-      document.removeEventListener('visibilitychange', syncPermissionState);
-      permissionStatus
-        ?.then((status) => {
-          status.removeEventListener('change', syncPermissionState);
-        })
-        .catch(() => {});
+      window.removeEventListener('focus', refreshState);
     };
-  }, [pushSupported, user]);
+  }, [pushSupported, user, queryClient]);
+
+  const state = useMemo<PushState>((): PushState => {
+    if (!pushSupported) return { kind: 'unsupported' };
+    if (isCheckingSubscription) return { kind: 'loading' };
+
+    const permission =
+      typeof window !== 'undefined' && 'Notification' in window
+        ? Notification.permission
+        : 'default';
+
+    if (permission === 'denied') return { kind: 'permission-denied' };
+    if (permission === 'default') return { kind: 'needs-permission' };
+    if (isSubscribed) return { kind: 'ready' };
+
+    return { kind: 'needs-subscribe' };
+  }, [pushSupported, isCheckingSubscription, isSubscribed]);
 
   return {
     isSubscribed: !!isSubscribed,
@@ -408,12 +401,13 @@ export function usePushNotifications() {
     pushSupported,
     browserSupportsPush,
     hasVapid,
-    permissionDenied,
+    permissionDenied: state.kind === 'permission-denied',
     isIos,
     isStandalone,
     isIosNonStandalone,
     subscribeError,
     subscribe: useCallback(() => subscribeMutation.mutateAsync(), [subscribeMutation]),
     unsubscribe: useCallback(() => unsubscribeMutation.mutateAsync(), [unsubscribeMutation]),
+    state,
   };
 }

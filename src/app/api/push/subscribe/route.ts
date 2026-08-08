@@ -105,22 +105,11 @@ export async function POST(request: Request) {
     });
 
     if (insertError) {
-      // Fallback: If unique(user_id) constraint is still present in DB, fallback to upsert
-      const { error: upsertError } = await adminClient.from('user_push_subscriptions').upsert(
-        {
-          user_id: user.id,
-          subscription,
-        },
-        { onConflict: 'user_id' },
+      console.error('Failed to save push subscription:', insertError);
+      return NextResponse.json(
+        { error: 'Failed to save subscription', details: insertError.message },
+        { status: 500 },
       );
-
-      if (upsertError) {
-        console.error('Failed to save push subscription fallback:', upsertError);
-        return NextResponse.json(
-          { error: 'Failed to save subscription', details: upsertError.message },
-          { status: 500 },
-        );
-      }
     }
 
     return NextResponse.json({ success: true });

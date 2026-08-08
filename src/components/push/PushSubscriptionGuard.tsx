@@ -13,18 +13,18 @@ import { usePushNotifications } from '@/hooks/push/usePushNotifications';
  * settings. This banner guides them to do so.
  */
 export default function PushSubscriptionGuard() {
-  const { permissionDenied, isSubscribed } = usePushNotifications();
+  const { state } = usePushNotifications();
   const [dismissed, setDismissed] = useState(false);
 
   // Reset dismissed state when permission changes
   useEffect(() => {
-    if (!permissionDenied) {
+    if (state.kind !== 'permission-denied') {
       setDismissed(false);
     }
-  }, [permissionDenied]);
+  }, [state.kind]);
 
   // Don't show if subscribed or not denied
-  if (isSubscribed || !permissionDenied || dismissed) return null;
+  if (state.kind === 'ready' || state.kind !== 'permission-denied' || dismissed) return null;
 
   const openSettings = () => {
     // Try to open browser notification settings

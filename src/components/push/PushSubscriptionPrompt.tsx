@@ -12,26 +12,18 @@ const PROMPT_SESSION_KEY = 'telegraf:push-prompt-dismissed';
  * no subscription exists). Works on mobile (iOS/Android PWA) and desktop.
  */
 export default function PushSubscriptionPrompt() {
-  const {
-    isSubscribed,
-    isCheckingSubscription,
-    isSubscribing,
-    pushSupported,
-    isIosNonStandalone,
-    subscribeError,
-    subscribe,
-  } = usePushNotifications();
+  const { state, isSubscribing, isIosNonStandalone, subscribeError, subscribe } =
+    usePushNotifications();
   const [dismissed, setDismissed] = useState(false);
 
   // Reset dismissed state when subscription state changes
   useEffect(() => {
-    if (isSubscribed) {
+    if (state.kind === 'ready') {
       setDismissed(false);
     }
-  }, [isSubscribed]);
+  }, [state.kind]);
 
-  const isDenied =
-    typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'denied';
+  const isDenied = state.kind === 'permission-denied';
 
   // Don't show again this session if user dismissed
   const isSessionDismissed =
@@ -91,9 +83,9 @@ export default function PushSubscriptionPrompt() {
   // Don't show if already subscribed, checking, not supported, denied permission,
   // or dismissed this session
   if (
-    isSubscribed ||
-    isCheckingSubscription ||
-    !pushSupported ||
+    state.kind === 'ready' ||
+    state.kind === 'unsupported' ||
+    state.kind === 'loading' ||
     isDenied ||
     dismissed ||
     isSessionDismissed
