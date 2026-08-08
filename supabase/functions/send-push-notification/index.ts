@@ -77,7 +77,21 @@ Deno.serve(async (req: Request) => {
       vapidPrivateKey
     )
 
-    const { messageId, chatId, senderId, content } = await req.json()
+    // ── Parse payload (supports both Database Webhook and legacy direct POST) ──
+    const body = await req.json()
+
+    // Database Webhook format:
+    // {
+    //   type: "INSERT", table: "messages", schema: "public",
+    //   record: { id, chat_id, sender_id, content, ... },
+    //   old_record: null
+    // }
+    const isWebhook = body && body.type === 'INSERT' && body.record
+
+    const messageId = isWebhook ? body.record.id : body.messageId
+    const chatId = isWebhook ? body.record.chat_id : body.chatId
+    const senderId = isWebhook ? body.record.sender_id : body.senderId
+    const content = isWebhook ? body.record.content : body.content
 
     if (!messageId || !chatId || !senderId) {
       return new Response(
