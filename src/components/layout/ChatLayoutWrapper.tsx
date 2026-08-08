@@ -4,6 +4,7 @@ import { usePathname } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSupabaseAuth } from '@/components/auth/AuthProvider';
 import PushSubscriptionGuard from '@/components/push/PushSubscriptionGuard';
+import PushSubscriptionPrompt from '@/components/push/PushSubscriptionPrompt';
 import { useChatsRealtime } from '@/hooks/chat';
 import Navbar from './Navbar';
 
@@ -65,6 +66,7 @@ export default function ChatLayoutWrapper({ children, sidebar, user }: ChatLayou
     <div className="flex flex-col h-[100dvh]">
       <Navbar user={user} onMenuClick={toggleSidebar} />
       {user && <PushSubscriptionGuard />}
+      {user && <PushSubscriptionPrompt />}
 
       <div className="flex flex-1 pt-14 relative overflow-hidden">
         {/* Overlay for mobile */}

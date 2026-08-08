@@ -3,7 +3,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useState } from 'react';
 import { useSupabaseAuth } from '@/components/auth/AuthProvider';
-import { isStandaloneMode } from '@/hooks/pwa/usePwaInstall';
 import { pushApi, type PushSubscriptionPayload } from '@/services/push/push.service';
 
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
@@ -103,7 +102,6 @@ async function getOrCreateBrowserSubscription(
 export function usePushNotifications() {
   const { user } = useSupabaseAuth();
   const queryClient = useQueryClient();
-  const isStandalonePwa = typeof window !== 'undefined' && isStandaloneMode();
 
   const browserSupportsPush = isPushAPISupported();
   const hasVapid = hasVapidKey();
@@ -223,15 +221,16 @@ export function usePushNotifications() {
 
     const syncPushState = async () => {
       try {
+        // Wait for query to complete so hasDbSub is accurate
+        if (isCheckingSubscription) return;
         const hasDbSub = queryClient.getQueryData(['push-subscription', user.id]) === true;
         const registration = await navigator.serviceWorker.getRegistration('/sw.js');
         const browserSub = await registration?.pushManager.getSubscription();
         const permission = Notification.permission;
 
         // Case 1: Permission granted, but no subscription anywhere
+        // → PushSubscriptionPrompt banner will show
         if (permission === 'granted' && !browserSub && !hasDbSub) {
-          console.log('[Push] Permission granted but no subscription, creating...');
-          await subscribeMutation.mutateAsync();
           return;
         }
 
@@ -240,8 +239,12 @@ export function usePushNotifications() {
           console.log('[Push] Browser has sub but DB does not, syncing...');
           const payload = browserSub.toJSON() as unknown as PushSubscriptionPayload;
           if (payload?.endpoint) {
-            await pushApi.subscribe(payload);
-            queryClient.setQueryData(['push-subscription', user.id], true);
+            try {
+              await pushApi.subscribe(payload);
+              queryClient.setQueryData(['push-subscription', user.id], true);
+            } catch {
+              // ignore sync errors
+            }
           }
           return;
         }
@@ -253,13 +256,9 @@ export function usePushNotifications() {
           return;
         }
 
-        // Case 4: Permission default, no subscription - request it
+        // Case 4: Permission default, no subscription
+        // → PushSubscriptionPrompt banner will show
         if (permission === 'default' && !hasDbSub && !browserSub) {
-          console.log('[Push] Permission default, requesting...');
-          const perm = await Notification.requestPermission();
-          if (perm === 'granted') {
-            await subscribeMutation.mutateAsync();
-          }
           return;
         }
       } catch (error) {
@@ -268,7 +267,7 @@ export function usePushNotifications() {
     };
 
     syncPushState();
-  }, [user?.id, pushSupported, queryClient, subscribeMutation]);
+  }, [user?.id, pushSupported, queryClient, subscribeMutation, isCheckingSubscription]);
 
   // Keep server subscription in sync when permission changes
   useEffect(() => {
@@ -278,19 +277,17 @@ export function usePushNotifications() {
       const currentPermission = Notification.permission;
       setPermissionDenied(currentPermission === 'denied');
 
+      // Case 3: Permission denied but DB has subscription → remove from DB
       if (currentPermission === 'denied') {
         pushApi.unsubscribe().catch(() => {});
         queryClient.setQueryData(['push-subscription', user.id], false);
         return;
       }
 
-      if (
-        currentPermission === 'granted' &&
-        !subscribeMutation.isPending &&
-        queryClient.getQueryData(['push-subscription', user.id]) !== true
-      ) {
-        subscribeMutation.mutateAsync().catch(() => {});
-      }
+      // Other cases are handled by:
+      // - PushSubscriptionPrompt banner (needs user action)
+      // - syncPushState effect (auto-sync where possible)
+      // - useQuery queryFn (auto-recreate browser subscription)
     };
 
     const permissionStatus = navigator.permissions?.query
@@ -319,31 +316,6 @@ export function usePushNotifications() {
         .catch(() => {});
     };
   }, [pushSupported, queryClient, subscribeMutation, user]);
-
-  // Request permission on first login (once per session)
-  useEffect(() => {
-    if (!user || !isStandalonePwa || !pushSupported) return;
-    if (typeof window === 'undefined' || !('Notification' in window)) return;
-    if (Notification.permission !== 'default') return;
-
-    const sessionKey = `telegraf:push-prompt-requested:${user.id}`;
-    if (sessionStorage.getItem(sessionKey)) return;
-
-    const timer = setTimeout(() => {
-      try {
-        sessionStorage.setItem(sessionKey, 'true');
-        Notification.requestPermission().then((permission) => {
-          if (permission === 'granted' && !subscribeMutation.isPending) {
-            subscribeMutation.mutateAsync().catch(() => {});
-          }
-        });
-      } catch {
-        // Ignore prompt errors
-      }
-    }, 1800);
-
-    return () => clearTimeout(timer);
-  }, [user?.id, isStandalonePwa, pushSupported, subscribeMutation]);
 
   return {
     isSubscribed: !!isSubscribed,
