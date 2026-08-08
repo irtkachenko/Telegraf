@@ -140,7 +140,24 @@ async function getOrCreateBrowserSubscription(
     if (retryCheck) {
       return retryCheck.toJSON() as unknown as PushSubscriptionPayload;
     }
-    throw err;
+
+    // Persistent "Registration failed - push service error" usually means the
+    // SW/push context for this origin is corrupted. Since we have NO browser
+    // subscription at this point, it's safe to unregister and re-register the SW.
+    try {
+      await registration.unregister();
+      const freshRegistration = await navigator.serviceWorker.register('/sw.js');
+      await navigator.serviceWorker.ready;
+
+      const secondTry = await freshRegistration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY!),
+      });
+      return secondTry.toJSON() as unknown as PushSubscriptionPayload;
+    } catch {
+      // SW reset did not help — rethrow the original error.
+      throw err;
+    }
   }
 }
 
@@ -281,7 +298,7 @@ export function usePushNotifications() {
 
         if (!subscription?.endpoint) {
           const errMsg =
-            'Браузер не зміг створити push-підписку. Google тимчасово блокує нові підписки на цьому пристрої. Зачекайте 15–30 хвилин і спробуйте ще раз, АБО перевірте chrome://settings/content/notifications — сайт не має бути в заблокованих.';
+            'Браузер не зміг створити push-підписку (push service error). Якщо помилка повторюється постійно — очистіть дані сайту: в Chrome натисніть ⓘ біля адреси → «Дані сайту» → «Очистити». Після цього натисніть «Увімкнути» ще раз.';
           setSubscribeError(errMsg);
           return { success: false, error: errMsg };
         }
