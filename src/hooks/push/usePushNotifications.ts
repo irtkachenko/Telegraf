@@ -9,14 +9,14 @@ const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
 let didWarnMissingVapidKey = false;
 
 function hasVapidKey(): boolean {
-  return !!VAPID_PUBLIC_KEY;
+  return !!VAPID_PUBLIC_KEY && VAPID_PUBLIC_KEY.trim().length > 0;
 }
 
 function hasPushConfig(): boolean {
   if (hasVapidKey()) return true;
 
   if (!didWarnMissingVapidKey && typeof window !== 'undefined') {
-    console.warn('NEXT_PUBLIC_VAPID_PUBLIC_KEY is not set. Push notifications are disabled.');
+    console.warn('NEXT_PUBLIC_VAPID_PUBLIC_KEY is not set or empty. Push notifications are disabled.');
     didWarnMissingVapidKey = true;
   }
 
@@ -52,14 +52,36 @@ function canUsePush(): boolean {
   return isPushAPISupported() && hasPushConfig();
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function getPushRegistration(): Promise<ServiceWorkerRegistration> {
-  await navigator.serviceWorker.register('/sw.js');
+  const registration = await navigator.serviceWorker.register('/sw.js');
+
+  // Ensure the service worker is active and controlling the page before
+  // subscribing. A stale/inactive SW can cause pushManager.subscribe() to
+  // fail with "Registration failed - push service error".
+  if (!navigator.serviceWorker.controller) {
+    await new Promise<void>((resolve) => {
+      const onControllerChange = () => {
+        navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
+        resolve();
+      };
+      navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
+      // Safety timeout in case the controller never changes.
+      setTimeout(onControllerChange, 3000);
+    });
+  }
+
   return navigator.serviceWorker.ready;
 }
 
+
 function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
-  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const cleanBase64 = base64String.trim().replace(/["']/g, '');
+  const padding = '='.repeat((4 - (cleanBase64.length % 4)) % 4);
+  const base64 = (cleanBase64 + padding).replace(/-/g, '+').replace(/_/g, '/');
   const rawData = window.atob(base64);
   const buffer = new ArrayBuffer(rawData.length);
   const outputArray = new Uint8Array(buffer);
@@ -70,27 +92,72 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
   return outputArray;
 }
 
+/**
+ * Fully clears any existing push subscription on this device.
+ * Waits for unsubscribe() to complete and adds a small delay so the
+ * browser has time to propagate the removal to the push service (FCM).
+ * This avoids the "Registration failed - push service error" that occurs
+ * when subscribe() is called too quickly after unsubscribe() on Android.
+ */
+async function clearExistingSubscription(
+  registration: ServiceWorkerRegistration,
+): Promise<void> {
+  try {
+    const existing = await registration.pushManager.getSubscription();
+    if (existing) {
+      try {
+        await existing.unsubscribe();
+      } catch (unsubErr) {
+        console.warn('[Push] Failed to unsubscribe existing subscription:', unsubErr);
+      }
+      // Give the browser time to fully remove the old subscription from FCM
+      await sleep(500);
+    }
+  } catch (err) {
+    console.warn('[Push] Failed to read existing subscription:', err);
+  }
+}
+
+/**
+ * Attempts to create a fresh browser push subscription with a robust retry
+ * loop. On Android Chrome, a stale/broken subscription can cause
+ * "Registration failed - push service error". We fully clear the old
+ * subscription, wait, and retry a few times before giving up.
+ */
 async function createFreshBrowserSubscription(
   registration: ServiceWorkerRegistration,
 ): Promise<PushSubscriptionPayload | null> {
   if (!isPushAPISupported() || !hasVapidKey()) return null;
 
-  const existing = await registration.pushManager.getSubscription();
-  if (existing) {
+  const applicationServerKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY!);
+
+  // Try up to 3 times, fully clearing the old subscription between attempts.
+  for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      await existing.unsubscribe();
-    } catch {
-      // Ignore
+      await clearExistingSubscription(registration);
+
+      const subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey,
+      });
+
+      return subscription.toJSON() as unknown as PushSubscriptionPayload;
+    } catch (err) {
+      console.warn(
+        `[Push] Subscription attempt ${attempt}/3 failed:`,
+        err instanceof Error ? err.message : err,
+      );
+      if (attempt < 3) {
+        // Wait before retrying so the push service can settle.
+        await sleep(700);
+      }
     }
   }
 
-  const subscription = await registration.pushManager.subscribe({
-    userVisibleOnly: true,
-    applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY!),
-  });
-
-  return subscription.toJSON() as unknown as PushSubscriptionPayload;
+  console.error('[Push] Browser push service error: could not create a subscription after 3 attempts');
+  return null;
 }
+
 
 async function getOrCreateBrowserSubscription(
   registration: ServiceWorkerRegistration,
@@ -102,17 +169,7 @@ async function getOrCreateBrowserSubscription(
     return existing.toJSON() as unknown as PushSubscriptionPayload;
   }
 
-  if (!hasVapidKey()) {
-    console.warn('NEXT_PUBLIC_VAPID_PUBLIC_KEY is not set. Push notifications are disabled.');
-    return null;
-  }
-
-  const subscription = await registration.pushManager.subscribe({
-    userVisibleOnly: true,
-    applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY!),
-  });
-
-  return subscription.toJSON() as unknown as PushSubscriptionPayload;
+  return createFreshBrowserSubscription(registration);
 }
 
 export function usePushNotifications() {
@@ -131,6 +188,7 @@ export function usePushNotifications() {
       'Notification' in window &&
       Notification.permission === 'denied',
   );
+  const [subscribeError, setSubscribeError] = useState<string | null>(null);
 
   const {
     data: isSubscribed,
@@ -189,33 +247,49 @@ export function usePushNotifications() {
   });
 
   const subscribeMutation = useMutation({
-    mutationFn: async (): Promise<boolean> => {
-      if (!user) return false;
+    mutationFn: async (): Promise<{ success: boolean; error?: string }> => {
+      setSubscribeError(null);
+      if (!user) return { success: false, error: 'Необхідна авторизація' };
+      if (!pushSupported) return { success: false, error: 'Push API не підтримується' };
 
-      if (!pushSupported) return false;
-
-      if (Notification.permission === 'default') {
-        const permission = await Notification.requestPermission();
-        if (permission !== 'granted') {
-          return false;
+      try {
+        if (Notification.permission === 'default') {
+          const permission = await Notification.requestPermission();
+          if (permission !== 'granted') {
+            return { success: false, error: 'Дозвіл на сповіщення відхилено' };
+          }
+        } else if (Notification.permission !== 'granted') {
+          return { success: false, error: 'Дозвіл на сповіщення заблоковано в налаштуваннях' };
         }
-      } else if (Notification.permission !== 'granted') {
-        return false;
+
+        const registration = await getPushRegistration();
+        const subscription = await createFreshBrowserSubscription(registration);
+
+        if (!subscription?.endpoint) {
+          const errMsg =
+            'Не вдалося активувати сповіщення на цьому пристрої. Перезавантажте додаток і спробуйте ще раз. Якщо не допоможе — видаліть додаток з головного екрана та додайте заново (це скидає налаштування push). Також перевірте, що Google Push не заблоковано VPN / AdBlock.';
+          setSubscribeError(errMsg);
+          return { success: false, error: errMsg };
+        }
+
+
+        await pushApi.subscribe(subscription);
+        return { success: true };
+      } catch (err: unknown) {
+        console.error('[Push] Subscribe error:', err);
+        const errMsg =
+          err instanceof Error
+            ? err.message
+            : 'Помилка реєстрації підписки у push-сервісі браузера';
+        setSubscribeError(errMsg);
+        return { success: false, error: errMsg };
       }
-
-      const registration = await getPushRegistration();
-      const subscription = await createFreshBrowserSubscription(registration);
-
-      if (!subscription?.endpoint) {
-        return false;
-      }
-
-      await pushApi.subscribe(subscription);
-      return true;
     },
-    onSuccess: (subscribed) => {
-      queryClient.setQueryData(['push-subscription', user?.id], subscribed);
-      queryClient.invalidateQueries({ queryKey: ['push-subscription', user?.id] });
+    onSuccess: (result) => {
+      if (result.success) {
+        queryClient.setQueryData(['push-subscription', user?.id], true);
+        queryClient.invalidateQueries({ queryKey: ['push-subscription', user?.id] });
+      }
     },
   });
 
@@ -256,12 +330,10 @@ export function usePushNotifications() {
         const browserSub = await registration?.pushManager.getSubscription();
         const permission = typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'default';
 
-        // Case 1: Permission granted, but no subscription anywhere
         if (permission === 'granted' && !browserSub && !hasDbSub) {
           return;
         }
 
-        // Case 2 & 9: Browser has sub but DB does not have it synced
         if (permission === 'granted' && browserSub && !hasDbSub) {
           const payload = browserSub.toJSON() as unknown as PushSubscriptionPayload;
           if (payload?.endpoint) {
@@ -275,13 +347,11 @@ export function usePushNotifications() {
           return;
         }
 
-        // Case 3: Permission denied but DB has subscription
         if (permission === 'denied') {
           setPermissionDenied(true);
           return;
         }
 
-        // Case 4: Permission default, no subscription
         if (permission === 'default' && !hasDbSub && !browserSub) {
           return;
         }
@@ -342,6 +412,7 @@ export function usePushNotifications() {
     isIos,
     isStandalone,
     isIosNonStandalone,
+    subscribeError,
     subscribe: useCallback(() => subscribeMutation.mutateAsync(), [subscribeMutation]),
     unsubscribe: useCallback(() => unsubscribeMutation.mutateAsync(), [unsubscribeMutation]),
   };

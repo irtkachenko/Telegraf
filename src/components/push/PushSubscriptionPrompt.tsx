@@ -1,6 +1,6 @@
 'use client';
 
-import { Bell, Share, X } from 'lucide-react';
+import { AlertCircle, Bell, Share, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { usePushNotifications } from '@/hooks/push/usePushNotifications';
 
@@ -18,6 +18,7 @@ export default function PushSubscriptionPrompt() {
     isSubscribing,
     pushSupported,
     isIosNonStandalone,
+    subscribeError,
     subscribe,
   } = usePushNotifications();
   const [dismissed, setDismissed] = useState(false);
@@ -101,8 +102,8 @@ export default function PushSubscriptionPrompt() {
   }
 
   const handleEnable = async () => {
-    const success = await subscribe();
-    if (success) {
+    const result = await subscribe();
+    if (result && result.success) {
       setDismissed(true);
     }
   };
@@ -130,6 +131,14 @@ export default function PushSubscriptionPrompt() {
           <p className="text-xs text-gray-300 mt-1 font-normal leading-snug">
             Отримуйте сповіщення про нові повідомлення, навіть коли додаток закритий.
           </p>
+
+          {subscribeError && (
+            <div className="mt-2 p-2 rounded-lg bg-red-500/10 border border-red-500/20 text-[#f87171] text-xs flex items-start gap-1.5 leading-snug">
+              <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+              <span>{subscribeError}</span>
+            </div>
+          )}
+
           <div className="flex items-center gap-2 mt-3">
             <button
               type="button"
