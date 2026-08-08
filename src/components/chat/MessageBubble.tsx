@@ -179,7 +179,7 @@ const MessageBubble = memo(
                   >
                     {/* Text Content */}
                     {message.content && (
-                      <div className="text-[15px] leading-[1.5] whitespace-pre-wrap break-all sm:break-words block w-full max-w-full overflow-hidden min-w-0">
+                        <div className="text-[15px] leading-[1.5] whitespace-pre-wrap break-words block w-full max-w-full overflow-hidden min-w-0">
                         <Linkify
                           options={{
                             target: '_blank',
