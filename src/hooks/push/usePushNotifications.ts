@@ -15,7 +15,6 @@ export type PushState =
   | { kind: 'ready' }
   | { kind: 'needs-permission' }
   | { kind: 'needs-subscribe' }
-  | { kind: 'needs-db-sync' }
   | { kind: 'permission-denied' };
 
 function hasVapidKey(): boolean {
@@ -214,6 +213,7 @@ export function usePushNotifications() {
     queryFn: async () => {
       if (!user) return false;
       if (!pushSupported) return false;
+      if (!isStandalone) return false;
       if (typeof window === 'undefined' || !('Notification' in window)) return false;
       if (Notification.permission !== 'granted') return false;
 
@@ -226,7 +226,10 @@ export function usePushNotifications() {
         matchedEndpoint: false,
       }));
 
-      if (browserSub && (!dbStatus.subscribed || !dbStatus.matchedEndpoint)) {
+      // If we have a browser subscription but it's not in the DB, save it (UPSERT).
+      // This handles the case where the DB was cleared or the subscription was
+      // created before the DB row existed.
+      if (browserSub && dbStatus.subscribed && !dbStatus.matchedEndpoint) {
         try {
           const payload = browserSub.toJSON() as unknown as PushSubscriptionPayload;
           if (payload?.endpoint) {
@@ -239,7 +242,30 @@ export function usePushNotifications() {
         }
       }
 
-      if (!browserSub && Notification.permission === 'granted') {
+      // If we have a browser subscription and it's in the DB, we're subscribed.
+      if (browserSub && dbStatus.matchedEndpoint) {
+        rememberEndpoint(browserEndpoint);
+        return true;
+      }
+
+      // If we have a browser subscription but no DB subscription at all,
+      // save it (UPSERT) so the user is subscribed.
+      if (browserSub && !dbStatus.subscribed) {
+        try {
+          const payload = browserSub.toJSON() as unknown as PushSubscriptionPayload;
+          if (payload?.endpoint) {
+            await pushApi.subscribe(payload);
+            rememberEndpoint(payload.endpoint);
+            return true;
+          }
+        } catch {
+          return false;
+        }
+      }
+
+      // No browser subscription — we are NOT subscribed. Do NOT auto-create one.
+      // The user must explicitly click "Увімкнути" in the prompt.
+      if (!browserSub) {
         const rememberedEndpoint = getRememberedEndpoint();
         const thisDeviceHadSub = rememberedEndpoint && dbStatus.matchedEndpoint;
 
@@ -251,28 +277,12 @@ export function usePushNotifications() {
           }
         }
 
-        if (dbStatus.subscribed && !thisDeviceHadSub) {
-          return false;
-        }
-
-        try {
-          const freshReg = await navigator.serviceWorker.ready;
-          const newSub = await getOrCreateBrowserSubscription(freshReg);
-          if (newSub?.endpoint) {
-            await pushApi.subscribe(newSub);
-            rememberEndpoint(newSub.endpoint);
-            return true;
-          }
-        } catch {
-          return false;
-        }
+        return false;
       }
-
-      if (!browserSub && !dbStatus.subscribed) return false;
 
       return true;
     },
-    enabled: !!user?.id && pushSupported,
+    enabled: !!user?.id && pushSupported && isStandalone,
     retry: false,
     staleTime: 30 * 1000,
   });
@@ -282,6 +292,12 @@ export function usePushNotifications() {
       setSubscribeError(null);
       if (!user) return { success: false, error: 'Необхідна авторизація' };
       if (!pushSupported) return { success: false, error: 'Push API не підтримується' };
+      if (!isStandalone) {
+        return {
+          success: false,
+          error: 'Встановіть додаток на головний екран, щоб увімкнути сповіщення',
+        };
+      }
 
       try {
         if (Notification.permission === 'default') {
@@ -352,7 +368,7 @@ export function usePushNotifications() {
 
   // Sync push subscription state when user logs in or permission changes
   useEffect(() => {
-    if (!user || !pushSupported) return;
+    if (!user || !pushSupported || !isStandalone) return;
 
     const syncPushState = async () => {
       if (isCheckingSubscription) return;
@@ -399,7 +415,7 @@ export function usePushNotifications() {
       }
     };
     void syncPushState();
-  }, [user?.id, pushSupported, queryClient, isCheckingSubscription]);
+  }, [user?.id, pushSupported, queryClient, isCheckingSubscription, isStandalone]);
 
   // Invalidate subscription state whenever permission changes
   useEffect(() => {
@@ -430,6 +446,7 @@ export function usePushNotifications() {
 
   const state = useMemo<PushState>((): PushState => {
     if (!pushSupported) return { kind: 'unsupported' };
+    if (!isStandalone) return { kind: 'unsupported' };
     if (isCheckingSubscription) return { kind: 'loading' };
 
     if (permission === 'denied') return { kind: 'permission-denied' };
@@ -437,7 +454,7 @@ export function usePushNotifications() {
     if (isSubscribed) return { kind: 'ready' };
 
     return { kind: 'needs-subscribe' };
-  }, [pushSupported, isCheckingSubscription, isSubscribed, permission]);
+  }, [pushSupported, isCheckingSubscription, isSubscribed, permission, isStandalone]);
 
   return {
     isSubscribed: !!isSubscribed,

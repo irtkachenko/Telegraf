@@ -7,6 +7,48 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// TTL: 1 hour — enough for a messaging app. If the device is offline,
+// the push will be delivered when it comes back online within the hour.
+const PUSH_TTL = 3600
+
+// Max retries for transient errors (5xx)
+const MAX_RETRIES = 1
+
+function isValidSubscription(sub) {
+  return (
+    sub &&
+    typeof sub.endpoint === 'string' &&
+    sub.endpoint.length > 0 &&
+    sub.keys &&
+    typeof sub.keys.p256dh === 'string' &&
+    typeof sub.keys.auth === 'string'
+  )
+}
+
+async function sendWithRetry(subscription, payload, options) {
+  let lastError = null
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      await webpush.sendNotification(subscription, payload, options)
+      return { ok: true }
+    } catch (err) {
+      lastError = err
+      const status = err?.statusCode
+      // 404 = endpoint not found, 410 = subscription expired, 403 = VAPID mismatch
+      if (status === 404 || status === 410 || status === 403) {
+        return { ok: false, status, fatal: true }
+      }
+      // Transient errors (5xx, network) — retry once
+      if (attempt < MAX_RETRIES && (status >= 500 || !status)) {
+        await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)))
+        continue
+      }
+      return { ok: false, status, fatal: false }
+    }
+  }
+  return { ok: false, error: lastError }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -144,22 +186,27 @@ Deno.serve(async (req: Request) => {
         'Urgency': 'high',
         'Topic': `chat-${chatId}` // Групує пуші на рівні сервера FCM/GCM
       },
-      TTL: 86400,
+      TTL: PUSH_TTL,
     }
 
     const sendPromises = subscriptionRows.map(async (row) => {
-      try {
-        await webpush.sendNotification(row.subscription, notificationPayload, pushOptions)
+      // Validate subscription format before sending
+      if (!isValidSubscription(row.subscription)) {
+        console.warn(`[PUSH] Invalid subscription format for sub id=${row.id}, removing`)
+        await supabase.from('user_push_subscriptions').delete().eq('id', row.id)
+        return
+      }
+
+      const result = await sendWithRetry(row.subscription, notificationPayload, pushOptions)
+
+      if (result.ok) {
         console.log(`Push sent to ${recipientId} (sub id=${row.id})`)
-      } catch (pushError: any) {
-        const status = pushError?.statusCode
-        // 404 = endpoint not found, 410 = subscription expired, 403 = VAPID mismatch
-        if (status === 404 || status === 410 || status === 403) {
-          console.log(`Removing stale push subscription id=${row.id} for ${recipientId} (HTTP ${status})`)
-          await supabase.from('user_push_subscriptions').delete().eq('id', row.id)
-        } else {
-          console.error(`Push error for sub id=${row.id}:`, pushError)
-        }
+      } else if (result.fatal) {
+        // 404/410/403 — subscription is dead, remove it
+        console.log(`Removing stale push subscription id=${row.id} for ${recipientId} (HTTP ${result.status})`)
+        await supabase.from('user_push_subscriptions').delete().eq('id', row.id)
+      } else {
+        console.error(`Push error for sub id=${row.id}:`, result.error)
       }
     })
 

@@ -92,22 +92,19 @@ export async function POST(request: Request) {
       );
     }
 
-    // First delete any existing subscription with this exact endpoint (even if bound to another user/old session)
-    await adminClient
+    // UPSERT: one device = one row. If the endpoint already exists for this user,
+    // update it; otherwise insert a new row. This prevents duplicate subscriptions.
+    const { error: upsertError } = await adminClient
       .from('user_push_subscriptions')
-      .delete()
-      .filter('subscription->>endpoint', 'eq', subscription.endpoint);
+      .upsert(
+        { user_id: user.id, subscription },
+        { onConflict: 'user_id,subscription->>endpoint' },
+      );
 
-    // Try inserting new multi-device row
-    const { error: insertError } = await adminClient.from('user_push_subscriptions').insert({
-      user_id: user.id,
-      subscription,
-    });
-
-    if (insertError) {
-      console.error('Failed to save push subscription:', insertError);
+    if (upsertError) {
+      console.error('Failed to save push subscription:', upsertError);
       return NextResponse.json(
-        { error: 'Failed to save subscription', details: insertError.message },
+        { error: 'Failed to save subscription', details: upsertError.message },
         { status: 500 },
       );
     }
