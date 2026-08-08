@@ -24,10 +24,6 @@ function hasPushConfig(): boolean {
   return false;
 }
 
-/**
- * Checks if the browser supports the Push API (regardless of configuration).
- * This is a browser capability check only.
- */
 function isPushAPISupported(): boolean {
   return (
     typeof window !== 'undefined' &&
@@ -37,10 +33,6 @@ function isPushAPISupported(): boolean {
   );
 }
 
-/**
- * Checks if push notifications can actually be used.
- * Requires both browser support AND valid VAPID configuration.
- */
 function canUsePush(): boolean {
   return isPushAPISupported() && hasPushConfig();
 }
@@ -63,22 +55,17 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
   return outputArray;
 }
 
-/**
- * Creates a fresh browser PushSubscription, unsubscribing from any existing
- * one first to guarantee a valid endpoint.
- */
 async function createFreshBrowserSubscription(
   registration: ServiceWorkerRegistration,
 ): Promise<PushSubscriptionPayload | null> {
   if (!isPushAPISupported() || !hasVapidKey()) return null;
 
-  // Unsubscribe from any existing subscription to force a fresh endpoint
   const existing = await registration.pushManager.getSubscription();
   if (existing) {
     try {
       await existing.unsubscribe();
     } catch {
-      // Ignore — old sub may already be invalid
+      // Ignore
     }
   }
 
@@ -90,9 +77,6 @@ async function createFreshBrowserSubscription(
   return subscription.toJSON() as unknown as PushSubscriptionPayload;
 }
 
-/**
- * Gets the current browser subscription or creates a new one.
- */
 async function getOrCreateBrowserSubscription(
   registration: ServiceWorkerRegistration,
 ): Promise<PushSubscriptionPayload | null> {
@@ -116,20 +100,11 @@ async function getOrCreateBrowserSubscription(
   return subscription.toJSON() as unknown as PushSubscriptionPayload;
 }
 
-/**
- * Hook for managing Web Push subscriptions.
- *
- * - Checks browser support and permission
- * - Creates a browser PushSubscription with VAPID keys
- * - Syncs the subscription with the Supabase backend
- * - Auto-resubscribes if the browser subscription or server record is missing/stale
- */
 export function usePushNotifications() {
   const { user } = useSupabaseAuth();
   const queryClient = useQueryClient();
   const isStandalonePwa = typeof window !== 'undefined' && isStandaloneMode();
-  
-  // Separate checks for better error handling
+
   const browserSupportsPush = isPushAPISupported();
   const hasVapid = hasVapidKey();
   const pushSupported = canUsePush();
@@ -152,8 +127,6 @@ export function usePushNotifications() {
       const browserSubscription = await registration.pushManager.getSubscription();
       const hasServerSub = await pushApi.isSubscribed().catch(() => false);
 
-      // ── Auto-resubscribe logic ──
-      // Case 1: Browser has subscription but server does not → re-sync to server
       if (browserSubscription && !hasServerSub) {
         try {
           const payload = browserSubscription.toJSON() as unknown as PushSubscriptionPayload;
@@ -162,12 +135,10 @@ export function usePushNotifications() {
             return true;
           }
         } catch {
-          // Failed to sync — treat as not subscribed
           return false;
         }
       }
 
-      // Case 2: Server has subscription but browser does not → re-create browser sub
       if (!browserSubscription && hasServerSub) {
         try {
           const freshReg = await navigator.serviceWorker.ready;
@@ -181,10 +152,8 @@ export function usePushNotifications() {
         }
       }
 
-      // Case 3: Neither exists
       if (!browserSubscription && !hasServerSub) return false;
 
-      // Case 4: Both exist — good state
       return true;
     },
     enabled: !!user?.id && isStandalonePwa && pushSupported,
@@ -198,7 +167,6 @@ export function usePushNotifications() {
 
       if (!isStandalonePwa || !pushSupported) return false;
 
-      // Only request permission if default (will show browser prompt) or granted
       if (Notification.permission === 'default') {
         const permission = await Notification.requestPermission();
         if (permission !== 'granted') {
@@ -209,7 +177,6 @@ export function usePushNotifications() {
       }
 
       const registration = await getPushRegistration();
-      // Use createFresh to guarantee a valid, current endpoint
       const subscription = await createFreshBrowserSubscription(registration);
 
       if (!subscription?.endpoint) {
@@ -221,7 +188,6 @@ export function usePushNotifications() {
     },
     onSuccess: (subscribed) => {
       queryClient.setQueryData(['push-subscription', user?.id], subscribed);
-      void queryClient.invalidateQueries({ queryKey: ['push-subscription', user?.id] });
     },
   });
 
@@ -246,13 +212,64 @@ export function usePushNotifications() {
     },
   });
 
-  // Keep server subscription in sync when permission changes outside our button.
+  // Sync push subscription state when user logs in or permission changes
+  useEffect(() => {
+    if (!user || !isStandalonePwa || !pushSupported) return;
+
+    const syncPushState = async () => {
+      try {
+        const hasDbSub = queryClient.getQueryData(['push-subscription', user.id]) === true;
+        const registration = await navigator.serviceWorker.getRegistration('/sw.js');
+        const browserSub = await registration?.pushManager.getSubscription();
+        const permission = Notification.permission;
+
+        // Case 1: Permission granted, but no subscription anywhere
+        if (permission === 'granted' && !browserSub && !hasDbSub) {
+          console.log('[Push] Permission granted but no subscription, creating...');
+          await subscribeMutation.mutateAsync();
+          return;
+        }
+
+        // Case 2: Browser has sub but DB does not
+        if (permission === 'granted' && browserSub && !hasDbSub) {
+          console.log('[Push] Browser has sub but DB does not, syncing...');
+          const payload = browserSub.toJSON() as unknown as PushSubscriptionPayload;
+          if (payload?.endpoint) {
+            await pushApi.subscribe(payload);
+            queryClient.setQueryData(['push-subscription', user.id], true);
+          }
+          return;
+        }
+
+        // Case 3: Permission denied but DB has subscription
+        if (permission === 'denied' && hasDbSub) {
+          console.log('[Push] Permission denied but DB has sub, removing...');
+          await pushApi.unsubscribe();
+          return;
+        }
+
+        // Case 4: Permission default, no subscription - request it
+        if (permission === 'default' && !hasDbSub && !browserSub) {
+          console.log('[Push] Permission default, requesting...');
+          const perm = await Notification.requestPermission();
+          if (perm === 'granted') {
+            await subscribeMutation.mutateAsync();
+          }
+          return;
+        }
+      } catch (error) {
+        console.error('[Push] Sync error:', error);
+      }
+    };
+
+    syncPushState();
+  }, [user?.id, isStandalonePwa, pushSupported, queryClient, subscribeMutation]);
+
+  // Keep server subscription in sync when permission changes
   useEffect(() => {
     if (!user || !isStandalonePwa || !pushSupported) return;
 
     const syncPermissionState = () => {
-      if (document.visibilityState === 'hidden') return;
-
       if (Notification.permission === 'denied') {
         pushApi.unsubscribe().catch(() => {});
         queryClient.setQueryData(['push-subscription', user.id], false);
@@ -295,18 +312,18 @@ export function usePushNotifications() {
     };
   }, [isStandalonePwa, pushSupported, queryClient, subscribeMutation, user]);
 
-  // Automatically request notification permission ONCE on first login (after smooth layout load)
+  // Request permission on first login (once per session)
   useEffect(() => {
     if (!user || !isStandalonePwa || !pushSupported) return;
     if (typeof window === 'undefined' || !('Notification' in window)) return;
     if (Notification.permission !== 'default') return;
 
-    const storageKey = `telegraf:push-prompt-requested:${user.id}`;
-    if (localStorage.getItem(storageKey)) return;
+    const sessionKey = `telegraf:push-prompt-requested:${user.id}`;
+    if (sessionStorage.getItem(sessionKey)) return;
 
     const timer = setTimeout(() => {
       try {
-        localStorage.setItem(storageKey, 'true');
+        sessionStorage.setItem(sessionKey, 'true');
         Notification.requestPermission().then((permission) => {
           if (permission === 'granted' && !subscribeMutation.isPending) {
             subscribeMutation.mutateAsync().catch(() => {});
@@ -318,7 +335,7 @@ export function usePushNotifications() {
     }, 1800);
 
     return () => clearTimeout(timer);
-  }, [user, isStandalonePwa, pushSupported, subscribeMutation]);
+  }, [user?.id, isStandalonePwa, pushSupported, subscribeMutation]);
 
   return {
     isSubscribed: !!isSubscribed,
@@ -327,7 +344,6 @@ export function usePushNotifications() {
     isUnsubscribing: unsubscribeMutation.isPending,
     isSupported: pushSupported,
     pushSupported,
-    // Expose separate states for better UI feedback
     browserSupportsPush,
     hasVapid,
     subscribe: useCallback(() => subscribeMutation.mutateAsync(), [subscribeMutation]),

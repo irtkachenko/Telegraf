@@ -63,7 +63,6 @@ export const useInAppBannerStore = create<BannerStore>((set) => ({
   showNotification: (notification) => {
     const id = Math.random().toString(36).substring(2, 9);
     set({ activeNotification: { ...notification, id } });
-    playChimeSound();
   },
   hideNotification: () => set({ activeNotification: null }),
 }));

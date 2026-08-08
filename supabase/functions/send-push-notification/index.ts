@@ -55,15 +55,18 @@ Deno.serve(async (req: Request) => {
     }
 
     const recipientId = chat.user_id === senderId ? chat.recipient_id : chat.user_id
+    console.log(`[PUSH DEBUG] chatId=${chatId} senderId=${senderId} recipientId=${recipientId}`)
     if (!recipientId || recipientId === senderId) {
       return new Response(JSON.stringify({ success: true, message: 'Skipped' }), { headers: corsHeaders })
     }
 
     const { data: subscriptionRow } = await supabase
       .from('user_push_subscriptions')
-      .select('subscription')
+      .select('subscription, user_id')
       .eq('user_id', recipientId)
       .maybeSingle()
+
+    console.log(`[PUSH DEBUG] subscriptionRow for recipientId=${recipientId}:`, subscriptionRow ? 'found' : 'not found')
 
     if (!subscriptionRow) {
       return new Response(JSON.stringify({ success: true, message: 'No subscription' }), { headers: corsHeaders })
