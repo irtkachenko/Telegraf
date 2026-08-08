@@ -3,8 +3,8 @@
 import { MessageSquare } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useMemo } from 'react';
-import { useChats } from '@/hooks/chat';
 import { useSupabaseAuth } from '@/components/auth/AuthProvider';
+import { useChats } from '@/hooks/chat';
 
 export default function ChatEmptyPage() {
   const router = useRouter();
@@ -12,18 +12,19 @@ export default function ChatEmptyPage() {
   const { data: chatsData } = useChats();
 
   const hasUnreadMessages = useMemo(() => {
-    if (!chatsData?.pages || !user) return false;
+    if (!(chatsData?.pages && user)) return false;
 
     for (const page of chatsData.pages) {
       for (const chat of page) {
         const lastMessage = chat.messages?.[0];
         if (!lastMessage) continue;
-        
+
         // Skip if last message is from current user
         if (lastMessage.sender_id === user.id) continue;
 
         // Check if message is unread
-        const readMessageId = chat.user_id === user.id ? chat.user_last_read_id : chat.recipient_last_read_id;
+        const readMessageId =
+          chat.user_id === user.id ? chat.user_last_read_id : chat.recipient_last_read_id;
         const readMessage = chat.messages?.find((m: any) => m.id === readMessageId);
         const readAt = readMessage?.created_at;
 
@@ -37,7 +38,6 @@ export default function ChatEmptyPage() {
 
   const handleClick = () => {
     router.push('/chat');
-    window.dispatchEvent(new Event('open-mobile-sidebar'));
   };
 
   return (

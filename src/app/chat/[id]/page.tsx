@@ -1,7 +1,7 @@
 'use client';
 
 import { AnimatePresence, motion } from 'framer-motion';
-import { ChevronDown } from 'lucide-react';
+import { ArrowLeft, ChevronDown } from 'lucide-react';
 import Image from 'next/image';
 import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -112,7 +112,7 @@ export default function ChatPage() {
   // Redirect ONLY when fetch explicitly fails with an error (e.g. 404 Chat Not Found)
   useEffect(() => {
     if (isAuthLoading || isChatLoading || isMessagesLoading) return;
-    
+
     if (isError) {
       router.replace('/');
     }
@@ -273,7 +273,9 @@ export default function ChatPage() {
         <div className="absolute inset-0 z-30 flex items-center justify-center text-gray-400 bg-[#08080a] backdrop-blur-md">
           <div className="flex flex-col items-center gap-2.5">
             <div className="w-6 h-6 border-2 border-[#5e6ad2] border-t-transparent rounded-full animate-spin" />
-            <p className="text-xs font-semibold text-gray-400 animate-pulse">Завантаження чату...</p>
+            <p className="text-xs font-semibold text-gray-400 animate-pulse">
+              Завантаження чату...
+            </p>
           </div>
         </div>
       )}
@@ -283,6 +285,14 @@ export default function ChatPage() {
         style={{ opacity: isLoaderVisible ? 0 : 1 }}
       >
         <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => router.push('/chat')}
+            className="lg:hidden p-1.5 -ml-1.5 hover:bg-white/5 rounded-md text-gray-400 hover:text-white transition-all cursor-pointer"
+            aria-label="Back to chats"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
           <div className="relative w-8 h-8 rounded-full overflow-hidden border border-white/10 shadow">
             <Image
               src={otherParticipant?.image || '/default-avatar.png'}

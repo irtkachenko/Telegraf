@@ -1,4 +1,3 @@
-import { Menu } from 'lucide-react';
 import Image from 'next/image';
 import {
   DropdownMenu,
@@ -17,24 +16,13 @@ interface NavbarProps {
     email?: string | null;
     image?: string | null;
   } | null;
-  onMenuClick?: () => void;
 }
 
-export default function Navbar({ user, onMenuClick }: NavbarProps) {
+export default function Navbar({ user }: NavbarProps) {
   return (
     <nav className="fixed top-0 left-0 right-0 z-[800] flex items-center justify-between px-4 sm:px-6 h-14 border-b border-white/[0.08] bg-[#0e1621]/90 backdrop-blur-md">
-      {/* Left: Menu & Logo */}
+      {/* Left: Logo */}
       <div className="flex items-center gap-2">
-        {user && (
-          <button
-            type="button"
-            onClick={onMenuClick}
-            className="p-1.5 -ml-1.5 hover:bg-white/5 border border-transparent hover:border-white/5 rounded-md text-gray-400 hover:text-white transition-all lg:hidden cursor-pointer"
-            aria-label="Toggle Menu"
-          >
-            <Menu className="w-4 h-4" />
-          </button>
-        )}
         <Logo />
       </div>
 
@@ -64,7 +52,10 @@ export default function Navbar({ user, onMenuClick }: NavbarProps) {
               </button>
             </DropdownMenuTrigger>
 
-            <DropdownMenuContent align="end" className="w-56 bg-[#17212b] border border-white/[0.1] text-white rounded-lg p-1">
+            <DropdownMenuContent
+              align="end"
+              className="w-56 bg-[#17212b] border border-white/[0.1] text-white rounded-lg p-1"
+            >
               <div className="px-2.5 py-2">
                 <p className="text-[9px] uppercase tracking-wider text-gray-500 font-bold">
                   Активний акаунт

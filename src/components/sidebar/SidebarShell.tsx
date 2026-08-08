@@ -32,10 +32,7 @@ function SidebarShellBase() {
   };
 
   return (
-    <aside
-      className="h-screen lg:h-[calc(100vh-56px)] w-80 bg-[#0e1621] border-r border-white/[0.08] flex flex-col z-40 shrink-0 overflow-hidden"
-      style={{ willChange: 'transform' }}
-    >
+    <aside className="h-full w-full bg-[#0e1621] flex flex-col overflow-hidden">
       {/* Header section with cleaner spacing */}
       <div className="pt-4 pb-2">
         {/* Sleek Segmented Switcher */}
@@ -96,11 +93,7 @@ function SidebarShellBase() {
 
 export const SidebarShell = memo(function SidebarShellWrapper() {
   return (
-    <Suspense
-      fallback={
-        <div className="w-80 h-screen bg-[#0e1621] border-r border-white/[0.08] animate-pulse" />
-      }
-    >
+    <Suspense fallback={<div className="w-full h-full bg-[#0e1621] animate-pulse" />}>
       <SidebarShellBase />
     </Suspense>
   );
