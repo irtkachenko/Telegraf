@@ -2,11 +2,12 @@ import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import { getUploadAllowedMimeTypes, storageConfig } from '@/config/storage.config';
 import { createClient } from '@/lib/supabase/server';
+import { getServiceRoleKey } from '@/lib/supabase/service-role';
 
 export async function GET() {
   try {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const serviceRoleKey = getServiceRoleKey();
     const supabase = serviceRoleKey
       ? createSupabaseClient(supabaseUrl, serviceRoleKey)
       : await createClient();

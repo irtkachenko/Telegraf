@@ -63,15 +63,9 @@ BEGIN
       'chatName', 'Чат'
     );
     
-    -- Get Supabase URL and service role key with hardcoded fallback
-    v_supabase_url := COALESCE(
-      current_setting('app.supabase_url', true),
-      'https://qdvtruuujxmjmmtbsizq.supabase.co'
-    );
-    v_service_role_key := COALESCE(
-      current_setting('app.service_role_key', true),
-      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFkdnRydXV1anhtam1tdGJzaXpxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2OTE2Mzg5NywiZXhwIjoyMDg0NzM5ODk3fQ.4Zi2WvwMjxx-1Kh6haKGs74M1HCWtWWeWQBXuOtb5BM'
-    );
+    -- Read credentials from DB settings (never hardcode secrets in source).
+    v_supabase_url := current_setting('app.supabase_url', true);
+    v_service_role_key := current_setting('app.service_role_key', true);
     
     -- Call Edge Function asynchronously (don't block the transaction)
     -- net.http_post expects body => jsonb (NOT text)

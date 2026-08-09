@@ -7,6 +7,26 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// Resolve the service-role (admin) key.
+// Supports the new `SUPABASE_SECRET_KEYS` (JSON: name -> sb_secret_...) format
+// with a fallback to the legacy `SUPABASE_SERVICE_ROLE_KEY` env var.
+function getServiceRoleKey() {
+  const secretKeys = Deno.env.get('SUPABASE_SECRET_KEYS')
+  if (secretKeys) {
+    try {
+      const keys = JSON.parse(secretKeys)
+      if (keys && typeof keys === 'object') {
+        if (typeof keys.default === 'string' && keys.default) return keys.default
+        const first = Object.values(keys).find((v) => typeof v === 'string' && v.length > 0)
+        if (first) return first
+      }
+    } catch {
+      // ignore malformed JSON, fall back below
+    }
+  }
+  return Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+}
+
 // TTL: 1 hour — enough for a messaging app. If the device is offline,
 // the push will be delivered when it comes back online within the hour.
 const PUSH_TTL = 3600
@@ -57,7 +77,7 @@ Deno.serve(async (req: Request) => {
   try {
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      getServiceRoleKey()
     )
 
     const vapidPublicKey = Deno.env.get('NEXT_PUBLIC_VAPID_PUBLIC_KEY')
