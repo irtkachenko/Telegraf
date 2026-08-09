@@ -41,6 +41,13 @@ export default function ChatPage() {
 
   const { data: chat, isLoading: isChatLoading, isError } = useChatDetails(id);
   const [isCloseToBottom, setIsCloseToBottom] = useState(true);
+  // Якір розділювача «Нові повідомлення» на момент відкриття чату.
+  // Фіксується один раз за сесію (залишається навіть після прочитання)
+  // і скидається лише при зміні чату / виході з нього.
+  const [unreadAnchor, setUnreadAnchor] = useState<{
+    chatId: string;
+    messageId: string;
+  } | null>(null);
   const isAtBottomRef = useRef(true);
   const isNearBottomRef = useRef(true);
   const {
@@ -96,6 +103,17 @@ export default function ChatPage() {
   }, [myLastReadId, messages, user?.id]);
 
   const hasUnread = unreadCount > 0;
+
+  // Render-phase state adjustment: фіксуємо якір розділювача один раз за сесію.
+  // Він не зникає одразу після прочитання (оскільки не перераховується з chat),
+  // а скидається лише при зміні чату / виході з нього.
+  if (hasUnread && firstUnreadIndex >= 0) {
+    if (!unreadAnchor || unreadAnchor.chatId !== id) {
+      setUnreadAnchor({ chatId: id, messageId: messages[firstUnreadIndex].id });
+    }
+  } else if (unreadAnchor && unreadAnchor.chatId !== id) {
+    setUnreadAnchor(null);
+  }
 
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [editingMessage, setEditingMessage] = useState<Message | null>(null);
@@ -441,7 +459,7 @@ export default function ChatPage() {
 
               return (
                 <div className="px-2 sm:px-6 lg:px-8 max-w-5xl mx-auto w-full py-0.5">
-                  {hasUnread && firstUnreadIndex === _index && <UnreadDivider />}
+                  {unreadAnchor?.messageId === message.id && <UnreadDivider />}
                   <MessageBubble
                     message={message}
                     currentUserId={user?.id}
