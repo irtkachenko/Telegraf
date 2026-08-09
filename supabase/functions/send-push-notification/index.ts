@@ -198,7 +198,8 @@ Deno.serve(async (req: Request) => {
     const pushOptions = {
       headers: {
         'Urgency': 'high',
-        'Topic': `chat-${chatId}` // Групує пуші на рівні сервера FCM/GCM
+        //'Topic': `chat-${chatId}`, Групує пуші на рівні сервера FCM/GCM
+        'Topic': `msg-${messageId}`
       },
       TTL: PUSH_TTL,
     }

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'telegraf-cache-v9';
+const CACHE_NAME = 'telegraf-cache-v10';
 
 // ── Install ──────────────────────────────────────────────
 self.addEventListener('install', () => {
