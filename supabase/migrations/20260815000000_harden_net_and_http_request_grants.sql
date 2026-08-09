@@ -35,5 +35,3 @@ BEGIN
   EXCEPTION WHEN undefined_function THEN NULL;
   END;
 END $$;
-
-COMMENT ON SCHEMA net IS 'pg_net outbound HTTP: only postgres/service_role (SSRF hardening)';
