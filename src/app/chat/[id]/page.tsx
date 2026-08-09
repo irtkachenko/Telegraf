@@ -9,6 +9,7 @@ import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
 import { useSupabaseAuth } from '@/components/auth/AuthProvider';
 import ChatInput from '@/components/chat/ChatInput';
 import MessageBubble from '@/components/chat/MessageBubble';
+import { UnreadDivider } from '@/components/chat/UnreadDivider';
 import { ConfirmationDialog } from '@/components/ui/confirmation-dialog';
 import {
   useChatDetails,
@@ -65,6 +66,36 @@ export default function ChatPage() {
     hasPreviousPage,
     id,
   );
+
+  // Останнє прочитане повідомлення поточного користувача.
+  const myLastReadId =
+    user?.id && chat
+      ? chat.user_id === user.id
+        ? chat.user_last_read_id
+        : chat.recipient_last_read_id
+      : null;
+
+  // Непрочитані вхідні повідомлення: вхідні повідомлення (sender_id !== user.id)
+  // з індексом, більшим за індекс останнього прочитаного поточним користувачем.
+  const { firstUnreadIndex, unreadCount } = useMemo(() => {
+    if (!myLastReadId) return { firstUnreadIndex: -1, unreadCount: 0 };
+
+    const readIndex = messages.findIndex((m) => m.id === myLastReadId);
+    if (readIndex === -1) return { firstUnreadIndex: -1, unreadCount: 0 };
+
+    let first = -1;
+    let count = 0;
+    for (let i = readIndex + 1; i < messages.length; i++) {
+      const m = messages[i];
+      if (m.sender_id && m.sender_id !== user?.id) {
+        if (first === -1) first = i;
+        count++;
+      }
+    }
+    return { firstUnreadIndex: first, unreadCount: count };
+  }, [myLastReadId, messages, user?.id]);
+
+  const hasUnread = unreadCount > 0;
 
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [editingMessage, setEditingMessage] = useState<Message | null>(null);
@@ -182,7 +213,29 @@ export default function ChatPage() {
 
     if (isDataReady && !initialScrollDoneRef.current) {
       initialScrollDoneRef.current = true;
-      scrollToBottom('auto', 2200);
+
+      if (hasUnread && firstUnreadIndex >= 0) {
+        // Варіант Б: скролимо до першого нового повідомлення, щоб розділювач
+        // «Нові повідомлення» опинився у верхній частині екрана.
+        const doScroll = () => {
+          if (!virtuosoRef.current || messages.length === 0) return;
+          virtuosoRef.current.scrollToIndex({
+            index: firstUnreadIndex,
+            align: 'start',
+            behavior: 'auto',
+          });
+        };
+
+        requestAnimationFrame(() => {
+          requestAnimationFrame(doScroll);
+        });
+
+        [150, 350, 700].forEach((delay) => setTimeout(doScroll, delay));
+      } else {
+        // Варіант А: чат без нових — скролимо тупо в самий кінець.
+        scrollToBottom('auto', 2200);
+      }
+
       prevMessagesRef.current = messages;
       return;
     }
@@ -225,6 +278,8 @@ export default function ChatPage() {
     getMessageKey,
     user?.id,
     isCloseToBottom,
+    hasUnread,
+    firstUnreadIndex,
   ]);
 
   const handleMessageMediaSettled = useCallback(() => {
@@ -338,7 +393,11 @@ export default function ChatPage() {
             ref={virtuosoRef}
             data={messages}
             computeItemKey={(_index, message) => message.client_id || message.id}
-            initialTopMostItemIndex={{ index: 'LAST', align: 'end' }}
+            initialTopMostItemIndex={
+              hasUnread && firstUnreadIndex >= 0
+                ? { index: firstUnreadIndex, align: 'start' }
+                : { index: 'LAST', align: 'end' }
+            }
             followOutput="smooth"
             alignToBottom
             atBottomThreshold={80}
@@ -382,6 +441,7 @@ export default function ChatPage() {
 
               return (
                 <div className="px-2 sm:px-6 lg:px-8 max-w-5xl mx-auto w-full py-0.5">
+                  {hasUnread && firstUnreadIndex === _index && <UnreadDivider />}
                   <MessageBubble
                     message={message}
                     currentUserId={user?.id}
