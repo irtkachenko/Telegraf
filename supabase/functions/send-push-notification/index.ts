@@ -27,6 +27,25 @@ function getServiceRoleKey() {
   return Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 }
 
+// Decode the payload of a JWT without verifying the signature.
+// Used only to enforce that callers present a `service_role` token
+// (i.e. the request originates from a Supabase Database Webhook),
+// since the function is otherwise reachable at its public URL.
+function decodeJwtPayload(token) {
+  const part = token.split('.')[1]
+  if (!part) return null
+  const b64 = part.replace(/-/g, '+').replace(/_/g, '/')
+  const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4)
+  try {
+    const json = new TextDecoder().decode(
+      Uint8Array.from(atob(padded), (c) => c.charCodeAt(0))
+    )
+    return JSON.parse(json)
+  } catch {
+    return null
+  }
+}
+
 // TTL: 1 hour — enough for a messaging app. If the device is offline,
 // the push will be delivered when it comes back online within the hour.
 const PUSH_TTL = 3600
@@ -75,6 +94,20 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
+    // Only accept calls authenticated with a service_role token
+    // (i.e. coming from a Supabase Database Webhook). The function is
+    // otherwise reachable at its public URL, so we check the JWT role
+    // ourselves regardless of the platform's verify_jwt setting.
+    const auth = req.headers.get('authorization') || ''
+    const token = auth.replace(/^Bearer\s+/i, '').trim()
+    const claims = token ? decodeJwtPayload(token) : null
+    if (!claims || claims.role !== 'service_role') {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       getServiceRoleKey()
