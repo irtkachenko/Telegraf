@@ -19,7 +19,7 @@ import {
   useScrollToMessage,
 } from '@/hooks/chat';
 import { usePresence } from '@/hooks/user';
-import { formatRelativeTime } from '@/lib/date-utils';
+import { formatLastSeen } from '@/lib/date-utils';
 import { extractStorageRef } from '@/lib/storage-utils';
 import { useStorageStore } from '@/store/useStorageStore';
 import type { Message } from '@/types';
@@ -266,6 +266,9 @@ export default function ChatPage() {
       : null;
   const isOnline = otherParticipant && onlineUsers.has(otherParticipant.id);
   const isTypingNow = otherParticipant && typingUsers.has(otherParticipant.id);
+  const lastSeenText = otherParticipant?.last_seen
+    ? formatLastSeen(otherParticipant.last_seen)
+    : '';
 
   return (
     <div className="flex flex-col h-[calc(100dvh-56px)] w-full relative overflow-hidden">
@@ -313,9 +316,7 @@ export default function ChatPage() {
                 <span className="text-green-400">в мережі</span>
               ) : (
                 <span className="text-gray-500">
-                  {otherParticipant?.last_seen
-                    ? `був(ла) ${formatRelativeTime(otherParticipant.last_seen)}`
-                    : 'не в мережі'}
+                  {lastSeenText ? `був(ля) ${lastSeenText}` : 'не в мережі'}
                 </span>
               )}
             </div>

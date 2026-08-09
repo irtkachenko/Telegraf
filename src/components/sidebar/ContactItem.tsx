@@ -5,7 +5,7 @@ import Image from 'next/image';
 import { memo } from 'react';
 import { useSupabaseAuth } from '@/components/auth/AuthProvider';
 import { useGetOrCreateChat } from '@/hooks/chat/useGetOrCreateChat';
-import { formatRelativeTime } from '@/lib/date-utils';
+import { formatLastSeen } from '@/lib/date-utils';
 import { cn } from '@/lib/utils';
 
 import type { AppUser } from '@/types';
@@ -22,6 +22,7 @@ interface ContactItemProps {
 function ContactItemBase({ user, disabled, onActionStart, onActionEnd }: ContactItemProps) {
   const { user: currentUser } = useSupabaseAuth();
   const getOrCreateChat = useGetOrCreateChat();
+  const lastSeenText = formatLastSeen(user.last_seen);
 
   const handleStartChat = () => {
     if (disabled || !currentUser?.id) return;
@@ -41,7 +42,9 @@ function ContactItemBase({ user, disabled, onActionStart, onActionEnd }: Contact
     <div
       className={cn(
         'flex items-center gap-2.5 px-2.5 py-2 rounded-lg transition-all border border-transparent group',
-        getOrCreateChat.isPending ? 'bg-white/[0.06] border-white/[0.06]' : 'hover:bg-white/[0.02] hover:border-white/[0.02]',
+        getOrCreateChat.isPending
+          ? 'bg-white/[0.06] border-white/[0.06]'
+          : 'hover:bg-white/[0.02] hover:border-white/[0.02]',
       )}
     >
       <div className="relative w-8 h-8 rounded-full shrink-0">
@@ -60,7 +63,10 @@ function ContactItemBase({ user, disabled, onActionStart, onActionEnd }: Contact
             </div>
           )}
         </div>
-        <PresenceIndicator userId={user.id} className="absolute bottom-0 right-0 w-2 h-2 border-black" />
+        <PresenceIndicator
+          userId={user.id}
+          className="absolute bottom-0 right-0 w-2 h-2 border-black"
+        />
       </div>
 
       <div className="flex-1 min-w-0">
@@ -70,10 +76,10 @@ function ContactItemBase({ user, disabled, onActionStart, onActionEnd }: Contact
         <div className="flex items-center gap-1.5 mt-0.5">
           <p className="text-[10px] text-gray-500 truncate lowercase">{user.email}</p>
           <PresenceIndicator userId={user.id} showOffline={false} className="hidden" />
-          {user.last_seen && (
+          {lastSeenText && (
             <>
               <span className="text-[9px] text-gray-600">&bull;</span>
-              <p className="text-[10px] text-gray-500">{formatRelativeTime(user.last_seen)}</p>
+              <p className="text-[10px] text-gray-500">{lastSeenText}</p>
             </>
           )}
         </div>

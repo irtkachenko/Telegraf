@@ -48,7 +48,7 @@ export default function ChatLayoutWrapper({ children, sidebar, user }: ChatLayou
             h-full
             bg-[#0c0d0f] lg:bg-transparent
             border-r border-white/[0.05]
-            ${user ? (isChatView ? 'hidden lg:flex' : 'w-full lg:w-80') : 'w-0 opacity-0 invisible overflow-hidden border-none'}
+            ${user ? (isChatView ? 'hidden lg:flex lg:min-w-[320px]' : 'w-full lg:w-80 lg:min-w-[320px]') : 'w-0 opacity-0 invisible overflow-hidden border-none'}
           `}
         >
           <div className="w-full h-full overflow-hidden">{sidebar}</div>
