@@ -17,6 +17,13 @@ export function createClient() {
   }
 
   const newClient = createBrowserClient(supabaseUrl, supabaseAnonKey, {
+    // Harden the session cookies: HTTPS-only in production, same-site scoped.
+    // httpOnly is intentionally left off — the @supabase/ssr browser client reads
+    // this cookie via document.cookie to restore the session.
+    cookieOptions: {
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+    },
     global: {
       fetch: async (url, options) => {
         // Check if we want to disable toast for this specific request

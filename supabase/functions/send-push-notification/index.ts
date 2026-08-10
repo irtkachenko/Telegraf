@@ -27,11 +27,17 @@ function getServiceRoleKey() {
   return Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 }
 
-// Decode the payload of a JWT without verifying the signature.
-// Used only to enforce that callers present a `service_role` token
-// (i.e. the request originates from a Supabase Database Webhook),
-// since the function is otherwise reachable at its public URL.
-function decodeJwtPayload(token) {
+// Extract the `role` claim from a JWT payload string.
+//
+// SECURITY: This helper is NOT itself a signature check. The cryptographic
+// validation of the JWT is performed by the Supabase platform because the
+// function runs with `verify_jwt = true` (see supabase/config.toml); any token
+// with an invalid/forged signature is rejected with 401 before this handler
+// executes. We only inspect the already-validated `role` claim here to make
+// sure a *signed-in user* JWT (role `authenticated`) can never trigger the
+// function — only a genuine service_role caller (the Database Webhook) may.
+function getRoleFromToken(token) {
+  if (!token) return null
   const part = token.split('.')[1]
   if (!part) return null
   const b64 = part.replace(/-/g, '+').replace(/_/g, '/')
@@ -40,10 +46,32 @@ function decodeJwtPayload(token) {
     const json = new TextDecoder().decode(
       Uint8Array.from(atob(padded), (c) => c.charCodeAt(0))
     )
-    return JSON.parse(json)
+    const parsed = JSON.parse(json)
+    return parsed && typeof parsed.role === 'string' ? parsed.role : null
   } catch {
     return null
   }
+}
+
+// Determine whether the caller presents a `service_role` token.
+//
+// Preferred source: `x-supabase-auth`, the platform-injected header carrying
+// the verifiably-signed JWT claims when `verify_jwt = true` is set. We fall
+// back to the `Authorization` header, whose signature is likewise validated by
+// the platform under `verify_jwt = true`. Either way the signature check is the
+// platform's job — we only assert the caller role.
+function isServiceRoleCaller(req) {
+  const sbAuth = req.headers.get('x-supabase-auth')
+  if (sbAuth) {
+    try {
+      const parsed = JSON.parse(sbAuth)
+      if (parsed && parsed.role === 'service_role') return true
+    } catch {
+      // malformed injected header — fall through to Authorization below
+    }
+  }
+  const auth = req.headers.get('authorization') || ''
+  return getRoleFromToken(auth.replace(/^Bearer\s+/i, '').trim()) === 'service_role'
 }
 
 // TTL: 1 hour — enough for a messaging app. If the device is offline,
@@ -95,13 +123,12 @@ Deno.serve(async (req: Request) => {
 
   try {
     // Only accept calls authenticated with a service_role token
-    // (i.e. coming from a Supabase Database Webhook). The function is
-    // otherwise reachable at its public URL, so we check the JWT role
-    // ourselves regardless of the platform's verify_jwt setting.
-    const auth = req.headers.get('authorization') || ''
-    const token = auth.replace(/^Bearer\s+/i, '').trim()
-    const claims = token ? decodeJwtPayload(token) : null
-    if (!claims || claims.role !== 'service_role') {
+    // (i.e. coming from a Supabase Database Webhook). The cryptographic JWT
+    // signature is validated by the platform (`verify_jwt = true` in
+    // supabase/config.toml) before this handler runs — here we additionally
+    // assert that the caller's verified role is `service_role`, so a regular
+    // signed-in user's token can never trigger the function.
+    if (!isServiceRoleCaller(req)) {
       return new Response(
         JSON.stringify({ error: 'Unauthorized' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

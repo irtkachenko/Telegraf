@@ -6,11 +6,22 @@ import { getServiceRoleKey } from '@/lib/supabase/service-role';
 
 export async function GET() {
   try {
+    // Require an authenticated user: this route builds an admin (service-role)
+    // Supabase client, so it must not be reachable by anonymous callers.
+    const authClient = await createClient();
+    const {
+      data: { user },
+    } = await authClient.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
     const serviceRoleKey = getServiceRoleKey();
     const supabase = serviceRoleKey
       ? createSupabaseClient(supabaseUrl, serviceRoleKey)
-      : await createClient();
+      : authClient;
     const { data: bucket, error } = await supabase.storage.getBucket(
       storageConfig.bucketNames.attachments,
     );

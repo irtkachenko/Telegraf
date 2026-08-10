@@ -29,6 +29,11 @@ export async function createMiddlewareClient(request: NextRequest) {
         );
       },
     },
+    // Harden the session cookies: HTTPS-only in production, same-site scoped.
+    cookieOptions: {
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+    },
   });
 
   return { supabase, supabaseResponse };
