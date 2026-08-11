@@ -54,10 +54,10 @@ export async function GET() {
       ],
       limits: {
         maxFileSize: String(bucket.file_size_limit ?? storageConfig.defaults.maxFileSize),
-        allowedTypes:
-          Array.isArray(bucket.allowed_mime_types) && bucket.allowed_mime_types.length > 0
-            ? bucket.allowed_mime_types
-            : getUploadAllowedMimeTypes(),
+        // MIME-типи для вибору файлів користувачем. Бакет тепер приймає ТІЛЬКИ
+        // зашифровані blob (application/octet-stream), тому тут завжди віддаємо
+        // статистичний список користувацьких типів, а не allowed_mime_types бакета.
+        allowedTypes: getUploadAllowedMimeTypes(),
         signedUrlExpiry: storageConfig.defaults.signedUrlExpiry,
       },
     };

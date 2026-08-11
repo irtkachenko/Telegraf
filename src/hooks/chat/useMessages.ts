@@ -126,14 +126,13 @@ export function useMessages(chatId: string, isCloseToBottom: boolean) {
   useEffect(() => {
     if (validMessages.length === 0 || !user?.id) return;
 
-    // If the chat isn't in an active reading state, clear pending timers
+    // If the chat isn't in an active reading state, don't clear pending timers.
+    // Let existing timers complete — their callback will re-check eligibility
+    // (isCloseToBottom, isWindowFocused, etc.) before actually marking as read.
+    // This prevents losing the read state during transient scroll/focus changes
+    // (e.g. smooth scroll to bottom temporarily reporting atBottom=false).
     const chatIsActive = isChatOpen && isWindowFocused && isDocumentVisible && isCloseToBottom;
     if (!chatIsActive) {
-      readTimersRef.current.forEach((timer, messageId) => {
-        clearTimeout(timer);
-        stopViewing(messageId);
-      });
-      readTimersRef.current.clear();
       return;
     }
 

@@ -154,9 +154,13 @@ function updateMessageInCache(queryClient: QueryClient, msg: Message) {
           m.id === msg.id ||
           (m.client_id && msg.client_id && m.client_id === msg.client_id)
         ) {
-          return {
+                    return {
             ...m,
             ...msg,
+            // E2EE: не потерто розшифрований текст плейсхолдером '🔒' — якщо
+            // повідомлення вже розшифроване (або оптимістичне текстове), зберігаємо
+            // його, а то реальний INSERT/UPDATE з контентом '🔒' робить бульяр порожнім.
+            content: msg.content === '🔒' ? m.content ?? msg.content : msg.content,
             client_id: m.client_id || msg.client_id,
             id: m.id.startsWith('temp-') ? msg.id : m.id,
             reply_details: msg.reply_details || m.reply_details,
@@ -199,9 +203,14 @@ function updateChatListMessageInCache(queryClient: QueryClient, msg: Message) {
       pages: old.pages.map((page: Message[]) =>
         page.map((m) => {
           if (m.id === normalizedMessage.id) {
-            return {
+                        return {
               ...m,
               ...normalizedMessage,
+              // E2EE: не потерто розшифрований текст плейсхолдером '🔒'.
+              content:
+                normalizedMessage.content === '🔒'
+                  ? m.content ?? normalizedMessage.content
+                  : normalizedMessage.content,
               reply_details: normalizedMessage.reply_details || m.reply_details,
               reply_to: normalizedMessage.reply_to || m.reply_to,
             };
@@ -251,11 +260,17 @@ export async function handleMessageInsert(
     if (!isCurrentChatOpen) {
       const senderName = messageToCache.sender?.name || 'Користувач';
       const senderAvatar = messageToCache.sender?.image || null;
+            // E2EE: контент повідомлення від сервера — плейсхолдер '🔒'.
+      // Не показуємо його в банері — замінюємо на дружнє повідомлення
+      // (або '📎 Вкладення', якщо є файли), бо справжній текст розшифровується
+      // лише у чаті одержувача.
+      const rawText = messageToCache.content;
       const text =
-        messageToCache.content ||
-        (Array.isArray(messageToCache.attachments) && messageToCache.attachments.length > 0
-          ? '📎 Вкладення'
-          : 'Нове повідомлення');
+        rawText && rawText !== '🔒'
+          ? rawText
+          : Array.isArray(messageToCache.attachments) && messageToCache.attachments.length > 0
+            ? '📎 Вкладення'
+            : 'Нове повідомлення';
 
       showInAppBanner({
         chatId: nakedMessage.chat_id,
