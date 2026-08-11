@@ -9,22 +9,12 @@
 // IndexedDB helpers
 // ──────────────────────────────────────────────
 
-const DB_NAME = 'telegraf-e2ee';
-const DB_VERSION = 1;
+import { openE2EEDb } from '@/lib/e2ee-db';
+
 const STORE_NAME = 'keys';
 
 function openDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME, { keyPath: 'userId' });
-      }
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
+  return openE2EEDb();
 }
 
 /**
@@ -198,20 +188,26 @@ export interface EncryptedPayload {
 
 /**
  * Encrypt a plaintext string using the shared AES-GCM key.
+ *
+ * An optional AAD (additional authenticated data) binds the ciphertext to a
+ * context (e.g. the chat id), preventing ciphertexts from being replayed or
+ * moved between chats. New messages are encrypted with AAD; legacy messages
+ * (sent without AAD) can still be decrypted via the fallback in decryptText.
  */
 export async function encryptText(
   sharedSecret: CryptoKey,
   plaintext: string,
+  aad?: string,
 ): Promise<EncryptedPayload> {
   const encoder = new TextEncoder();
   const data = encoder.encode(plaintext);
   const iv = fillIV(new ArrayBuffer(12));
 
-  const ciphertext = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv },
-    sharedSecret,
-    data,
-  );
+  const params: AesGcmParams = aad
+    ? { name: 'AES-GCM', iv, additionalData: encoder.encode(aad) }
+    : { name: 'AES-GCM', iv };
+
+  const ciphertext = await crypto.subtle.encrypt(params, sharedSecret, data);
 
   return { ciphertext, iv };
 }
@@ -223,7 +219,25 @@ export async function decryptText(
   sharedSecret: CryptoKey,
   ciphertext: ArrayBuffer,
   iv: ArrayBuffer,
+  aad?: string,
 ): Promise<string> {
+  const encoder = new TextEncoder();
+
+  // Prefer AAD-bound decryption (current format); fall back to the legacy
+  // unbound format so old messages remain readable after the upgrade.
+  if (aad) {
+    try {
+      const decrypted = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv, additionalData: encoder.encode(aad) },
+        sharedSecret,
+        ciphertext,
+      );
+      return new TextDecoder().decode(decrypted);
+    } catch {
+      // fall through to the legacy path below
+    }
+  }
+
   const decrypted = await crypto.subtle.decrypt(
     { name: 'AES-GCM', iv },
     sharedSecret,
@@ -261,15 +275,16 @@ export interface FileEncryptionResult {
 export async function encryptFile(
   fileKey: CryptoKey,
   file: Blob,
+  aad?: string,
 ): Promise<FileEncryptionResult> {
   const iv = fillIV(new ArrayBuffer(12));
   const fileBuffer = await file.arrayBuffer();
 
-  const ciphertext = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv },
-    fileKey,
-    fileBuffer,
-  );
+  const params: AesGcmParams = aad
+    ? { name: 'AES-GCM', iv, additionalData: new TextEncoder().encode(aad) }
+    : { name: 'AES-GCM', iv };
+
+  const ciphertext = await crypto.subtle.encrypt(params, fileKey, fileBuffer);
 
   const encryptedBlob = new Blob([ciphertext], { type: 'application/octet-stream' });
 
@@ -284,8 +299,23 @@ export async function decryptFile(
   encryptedBlob: Blob,
   iv: ArrayBuffer,
   mimeType: string,
+  aad?: string,
 ): Promise<Blob> {
   const ciphertext = await encryptedBlob.arrayBuffer();
+  const encoder = new TextEncoder();
+
+  if (aad) {
+    try {
+      const decrypted = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv, additionalData: encoder.encode(aad) },
+        fileKey,
+        ciphertext,
+      );
+      return new Blob([decrypted], { type: mimeType });
+    } catch {
+      // legacy fallback
+    }
+  }
 
   const decrypted = await crypto.subtle.decrypt(
     { name: 'AES-GCM', iv },
@@ -338,6 +368,7 @@ export interface DecryptedFileMetadata {
 export async function encryptFileMetadata(
   sharedSecret: CryptoKey,
   metadata: EncryptedFileMetadataInput,
+  aad?: string,
 ): Promise<EncryptedPayload> {
   const jwkKey = await crypto.subtle.exportKey('jwk', metadata.fileKey);
 
@@ -348,7 +379,7 @@ export async function encryptFileMetadata(
     name: metadata.name,
   };
 
-  return encryptText(sharedSecret, JSON.stringify(plainObject));
+  return encryptText(sharedSecret, JSON.stringify(plainObject), aad);
 }
 
 /**
@@ -360,8 +391,9 @@ export async function decryptFileMetadata(
   sharedSecret: CryptoKey,
   ciphertext: ArrayBuffer,
   iv: ArrayBuffer,
+  aad?: string,
 ): Promise<DecryptedFileMetadata> {
-  const json = await decryptText(sharedSecret, ciphertext, iv);
+  const json = await decryptText(sharedSecret, ciphertext, iv, aad);
   const parsed = JSON.parse(json);
 
   const fileKey = await crypto.subtle.importKey(

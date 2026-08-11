@@ -17,6 +17,7 @@ import {
 import { useChats, useDeleteChat } from '@/hooks/chat';
 import { formatRelativeTime } from '@/lib/date-utils';
 import type { FullChat, Message } from '@/types';
+import { ChatPreviewLine } from './ChatPreviewLine';
 import { PresenceIndicator } from './PresenceIndicator';
 
 function ChatListBase() {
@@ -128,11 +129,12 @@ function ChatListBase() {
                     isActiveChat ? 'text-gray-300' : 'text-[#8a8b98]'
                   }`}
                 >
-                  {lastMessage?.sender_id === currentUserId && 'Ви: '}
-                  {lastMessage?.content ||
-                    (Array.isArray(lastMessage?.attachments) && lastMessage.attachments.length > 0
-                      ? '📎 Медіа'
-                      : 'Немає повідомлень')}
+                  <ChatPreviewLine
+                    chatId={chat.id}
+                    recipientId={partner?.id}
+                    lastMessage={lastMessage}
+                    currentUserId={currentUserId}
+                  />
                 </p>
                 {isUnread && (
                   <div className="w-2 h-2 bg-[#3390ec] rounded-full shadow-[0_0_6px_rgba(51,144,236,0.5)] shrink-0" />

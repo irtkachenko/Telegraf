@@ -20,6 +20,7 @@ import {
   useScrollToMessage,
 } from '@/hooks/chat';
 import { usePresence } from '@/hooks/user';
+import { revokeAllDecryptedUrls } from '@/lib/decrypt-attachment';
 import { formatLastSeen } from '@/lib/date-utils';
 import { extractStorageRef } from '@/lib/storage-utils';
 import { useStorageStore } from '@/store/useStorageStore';
@@ -64,7 +65,12 @@ export default function ChatPage() {
 
   // Дешифрування повідомлень E2EE
   const otherParticipant = chat?.participants?.find((p) => p.id !== user?.id);
-  useDecryptChatMessages(id, otherParticipant?.id, messages);
+  const { sharedSecret } = useDecryptChatMessages(id, otherParticipant?.id, messages);
+
+  // Звільняємо декодовані object URL-и при виході з чату.
+  useEffect(() => {
+    return () => revokeAllDecryptedUrls();
+  }, []);
 
   const { scrollToMessage, highlightedId } = useScrollToMessage(
     virtuosoRef,
@@ -479,6 +485,8 @@ export default function ChatPage() {
                     isHighlighed={highlightedId === message.id}
                     otherParticipantName={otherParticipant?.name || undefined}
                     onMediaSettled={handleMessageMediaSettled}
+                    sharedSecret={sharedSecret ?? undefined}
+                    chatId={id}
                   />
                 </div>
               );

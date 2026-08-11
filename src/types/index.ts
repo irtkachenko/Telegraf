@@ -32,6 +32,8 @@ export interface Attachment {
     width?: number;
     height?: number;
     expired?: boolean;
+    /** Оригінальний MIME-тип файлу (для E2EE-вкладень) */
+    type?: string;
     /** Зашифровані метадані (ключ файлу + IV + оригінальна назва/тип) — base64 */
     encrypted_metadata?: string;
     /** IV для розшифрування метаданих — base64 */

@@ -7,12 +7,12 @@ import { toast } from 'sonner';
 import { useSupabaseAuth } from '@/components/auth/AuthProvider';
 import { useEditMessage } from '@/hooks/chat';
 import { useSendMessageWithFiles } from '@/hooks/chat/useSendMessageWithFiles';
-import { useSharedSecret } from '@/hooks/keys';
+import { useSharedSecret, useE2EEInit } from '@/hooks/keys';
 import { useStorageLimits } from '@/hooks/useDynamicStorageConfig';
 import { useOptimisticAttachmentLazy } from '@/hooks/useOptimisticAttachmentLazy';
 import { cn } from '@/lib/utils';
 import { handleError } from '@/shared/lib/error-handler';
-import { NetworkError } from '@/shared/lib/errors';
+import { AuthError, NetworkError } from '@/shared/lib/errors';
 import type { Message } from '@/types';
 import ComposerAddons from './ComposerAddons';
 
@@ -45,8 +45,19 @@ export default function ChatInput({
     useOptimisticAttachmentLazy();
   const { getAcceptString } = useStorageLimits();
 
-  // Pre-load the shared secret for E2EE (caches in react-query)
-  useSharedSecret(chatId, recipientId);
+    // Pre-load the shared secret for E2EE (caches in react-query)
+    const {
+    data: sharedSecret,
+    isPending: secretPending,
+    isError: secretError,
+    error: secretErrorObj,
+  } = useSharedSecret(chatId, recipientId);
+  // Глобальний стан ініціалізації власного ключа (приватний ключ у IndexedDB).
+    const {
+    isInitialized: e2eeInitialized,
+    isLoading: e2eeInitLoading,
+    error: e2eeInitError,
+  } = useE2EEInit();
 
   const sendMessageWithFiles = useSendMessageWithFiles(chatId, { recipientId });
   const editMessage = useEditMessage(chatId);
@@ -122,11 +133,16 @@ export default function ChatInput({
           client_id: clientId,
         });
       }
-    } catch {
-      handleError(
-        new NetworkError('Failed to process message', 'message', 'MESSAGE_PROCESS_ERROR', 500),
-        'ChatInput',
-      );
+        } catch (error) {
+      // Зберігаємо семантику E2EE/auth‑помилок замість «Failed to process message».
+      if (error instanceof AuthError) {
+        handleError(error, 'ChatInput');
+      } else {
+        handleError(
+          new NetworkError('Failed to process message', 'message', 'MESSAGE_PROCESS_ERROR', 500),
+          'ChatInput',
+        );
+      }
       setContent(trimmed);
     }
   };
@@ -150,7 +166,44 @@ export default function ChatInput({
     e.target.value = '';
   };
 
-  const isSubmitDisabled = sendMessageWithFiles.isPending || !(content.trim() || hasAttachments);
+      // E2EE readiness: для 1:1 чатів (є одержувач) не даємо надсилати,
+  // доки не готовий спільний секрет (приватний ключ + публічний ключ співрозмовника).
+  const e2eeReady = e2eeInitialized && !secretPending && !!sharedSecret;
+  const isE2eeBlocked = !!recipientId && !e2eeReady;
+
+  // Конкретна причина блокування — показуємо підказку, а не нечітке «чекаємо…»
+    const e2eeBlockedReason =
+    e2eeInitLoading
+      ? 'Ініціалізуємо ваші ключі E2EE…'
+      : !e2eeInitialized
+        ? 'Не вдалося ініціалізувати ключі E2EE. Оновіть сторінку.'
+        : secretPending
+          ? 'Завантажуємо ключі E2EE…'
+          : secretError
+            ? String(secretErrorObj?.message ?? '').includes('has no public key')
+              ? 'Співрозмовник ще не створив ключі E2EE — попросіть його відкрити чат.'
+              : 'Помилка ключів E2EE. Оновіть сторінку або перевірте, що співрозмовник у мережі.'
+            : undefined;
+
+  // Діагностика (DevTools): чому саме not ready.
+  useEffect(() => {
+    if (!recipientId) return;
+    console.debug('[E2EE]', {
+                  chatId,
+      recipientId,
+      keysInit: e2eeInitialized,
+      keysLoading: e2eeInitLoading,
+      keysError: e2eeInitError ? String((e2eeInitError as Error).message) : null,
+      secretPending,
+      hasSecret: !!sharedSecret,
+      ready: e2eeReady,
+    });
+  }, [recipientId, chatId, e2eeInitialized, e2eeInitLoading, e2eeInitError, secretPending, sharedSecret, secretErrorObj, e2eeReady]);
+
+  const isSubmitDisabled =
+    sendMessageWithFiles.isPending ||
+    isE2eeBlocked ||
+    !(content.trim() || hasAttachments);
 
   return (
     <div 
@@ -204,7 +257,13 @@ export default function ChatInput({
         </div>
 
         {/* Toolbar section at the bottom */}
-        <div className="border-t border-white/[0.04] px-3 py-1.5 flex items-center justify-between select-none">
+                <div className="border-t border-white/[0.04] px-3 py-1.5 flex items-center justify-between select-none">
+          {/* E2EE readiness notice */}
+          {recipientId && !e2eeReady && !sendMessageWithFiles.isPending && (
+            <span className="text-[10px] text-amber-400 font-medium">
+                            {e2eeBlockedReason || 'Ключі E2EE не готові — чекаємо…'}
+            </span>
+          )}
           {/* Left tools (Attachment icon) */}
           <div className="flex items-center gap-1">
             <button

@@ -10,6 +10,7 @@ import type { Message } from '@/types';
  * Спроба розшифрувати зашифрований вміст повідомлення.
  */
 async function tryDecryptMessageContent(
+  chatId: string,
   encryptedContent: string,
   encryptedIv: string,
   sharedSecret: CryptoKey | undefined,
@@ -17,7 +18,7 @@ async function tryDecryptMessageContent(
   if (!sharedSecret) return null;
   try {
     const { decryptMessageContent } = await import('@/services');
-    return decryptMessageContent(sharedSecret, encryptedContent, encryptedIv);
+    return decryptMessageContent(sharedSecret, chatId, encryptedContent, encryptedIv);
   } catch {
     return null;
   }
@@ -51,6 +52,7 @@ export function useDecryptChatMessages(
       const results = await Promise.all(
         pending.map(async (msg) => {
           const plaintext = await tryDecryptMessageContent(
+            chatId,
             msg.encrypted_content!,
             msg.encrypted_iv!,
             sharedSecret,

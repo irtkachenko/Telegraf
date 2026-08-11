@@ -57,7 +57,7 @@ export async function uploadEncryptedFileOptimized(
 ): Promise<Attachment> {
   try {
     // 1. Шифруємо файл та його метадані
-    const encrypted = await encryptFileAttachment(sharedSecret, file);
+    const encrypted = await encryptFileAttachment(sharedSecret, chatId, file);
 
     // 2. Завантажуємо зашифрований файл (з обфускованою назвою)
     const encryptedFile = new File([encrypted.encryptedBlob], encrypted.obfuscatedName, {
@@ -69,8 +69,15 @@ export async function uploadEncryptedFileOptimized(
     // 3. Додаємо зашифровані метадані до вкладення
     return {
       ...attachment,
+      type: file.type.startsWith('image/')
+        ? 'image'
+        : file.type.startsWith('video/')
+          ? 'video'
+          : 'file',
+
       metadata: {
         ...attachment.metadata,
+        type: file.type,
         name: file.name,
         encrypted_metadata: encrypted.encryptedMetadata.ciphertext,
         encrypted_metadata_iv: encrypted.encryptedMetadata.iv,

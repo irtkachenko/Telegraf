@@ -75,5 +75,5 @@ export function useE2EEInit() {
     }
   }, [error]);
 
-  return { isInitialized: !!isInitialized, isLoading };
+    return { isInitialized: !!isInitialized, isLoading, error };
 }

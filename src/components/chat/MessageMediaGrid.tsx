@@ -8,6 +8,7 @@ import { useStorageUrl } from '@/hooks/useStorageUrl';
 import { extractStorageRef } from '@/lib/storage-utils';
 import { cn } from '@/lib/utils';
 import { useStorageStore } from '@/store/useStorageStore';
+import { getCachedDecryptedUrl, getDecryptedAttachmentUrl, isEncryptedAttachment } from '@/lib/decrypt-attachment';
 import type { Attachment } from '@/types';
 import { MediaPlaceholder } from './MediaPlaceholder';
 
@@ -16,6 +17,10 @@ const ImageModal = lazy(() => import('./ImageModal'));
 interface MessageMediaGridProps {
   items: Attachment[];
   onMediaSettled?: () => void;
+  /** E2EE shared secret for the chat — enables on-demand decryption. */
+  sharedSecret?: CryptoKey;
+  /** Chat id used as AES-GCM AAD during decryption. */
+  chatId?: string;
 }
 
 interface AttachmentWithUrl extends Attachment {
@@ -37,7 +42,12 @@ function getState(
   return { cacheKey, itemUrl, isFailed, isLoading };
 }
 
-export default function MessageMediaGrid({ items, onMediaSettled }: MessageMediaGridProps) {
+export default function MessageMediaGrid({
+  items,
+  onMediaSettled,
+  sharedSecret,
+  chatId,
+}: MessageMediaGridProps) {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
 
   const { urlCache, mediaStates, failedUrls, setUrl, addFailedUrl, removeFailedUrl, setMediaState } = useStorageStore();
@@ -72,9 +82,13 @@ export default function MessageMediaGrid({ items, onMediaSettled }: MessageMedia
       const { urlCache: currentCache, mediaStates: currentMediaStates, failedUrls: currentFailed } =
         useStorageStore.getState();
 
-      const cacheKey = `${item.id}:${item.url}`;
+                        const cacheKey = `${item.id}:${item.url}`;
       const cached = currentCache[cacheKey];
-      const needsRefresh = !cached || cached.expiresAt - now <= bufferMs;
+            // A revoked blob: URL (its module-cache entry was cleared, e.g. on chat
+      // unmount) must be re-resolved so navigating back to a chat stays intact.
+      const objectUrlRevoked =
+        !!cached?.url?.startsWith('blob:') && !getCachedDecryptedUrl(item.id);
+      const needsRefresh = !cached || cached.expiresAt - now <= bufferMs || objectUrlRevoked;
       if (!needsRefresh) return;
 
       if (currentFailed.has(item.url)) return;
@@ -83,8 +97,20 @@ export default function MessageMediaGrid({ items, onMediaSettled }: MessageMedia
 
       try {
         const resolvedUrl = await getUrl(ref.bucket, ref.path);
+        let displayUrl = resolvedUrl;
+        if (sharedSecret && chatId && isEncryptedAttachment(item)) {
+          try {
+            displayUrl = await getDecryptedAttachmentUrl(sharedSecret, chatId, item, resolvedUrl);
+          } catch {
+            if (!isMounted) return;
+            addFailedUrl(item.url);
+            setMediaState(cacheKey, { isLoading: false, hasError: true });
+            return;
+          }
+        }
+
         if (!isMounted) return;
-        setUrl(cacheKey, { url: resolvedUrl, expiresAt: Date.now() + expiryMs });
+        setUrl(cacheKey, { url: displayUrl, expiresAt: Date.now() + expiryMs });
         removeFailedUrl(item.url);
         setMediaState(cacheKey, { isLoading: false, isLoaded: true });
       } catch {
@@ -98,7 +124,7 @@ export default function MessageMediaGrid({ items, onMediaSettled }: MessageMedia
       isMounted = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [itemsSignature, getUrl, setUrl, addFailedUrl, removeFailedUrl, setMediaState]);
+  }, [itemsSignature, getUrl, setUrl, addFailedUrl, removeFailedUrl, setMediaState, sharedSecret, chatId]);
 
   // Process items with cached URLs
   const processedItems = useMemo(() => {

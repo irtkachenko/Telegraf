@@ -4,6 +4,7 @@ import { type InfiniteData, useMutation, useQueryClient } from '@tanstack/react-
 import { useRef } from 'react';
 import { toast } from 'sonner';
 import { useSupabaseAuth } from '@/components/auth/AuthProvider';
+import { getSharedSecret } from '@/hooks/keys';
 import { useStorageLimits } from '@/hooks/useDynamicStorageConfig';
 import { extractStorageRef, type StorageRef } from '@/lib/storage-utils';
 import {
@@ -145,8 +146,23 @@ export function useSendMessageWithFiles(
         }
       }
 
-      // Перевіряємо, чи доступний спільний секрет для E2EE
-      const sharedSecret = getCachedSharedSecret();
+            // E2EE: спочатку читаємо кеш (useSharedSecret підвищує його),
+      // а якщо його нема — обчислюємо fail‑secure. Коли є одержувач,
+      // ніколи не допускаємо fallback на незашифроване повідомлення.
+      const recipientIdOpt = options?.recipientId;
+      let sharedSecret: CryptoKey | null = getCachedSharedSecret();
+      if (!sharedSecret && recipientIdOpt && user) {
+        try {
+          sharedSecret = await getSharedSecret(user.id, recipientIdOpt);
+        } catch {
+          throw new AuthError(
+            'Ключі E2EE не готові. Повідомлення не надсилається у відкритому вигляді — ' +
+              'зачекіть, поки співрозмовник ініціалізує свої ключі, або перевірте підключення.',
+            'E2EE_NOT_READY',
+            403,
+          );
+        }
+      }
       const shouldEncrypt = !!sharedSecret;
 
       // Паралельне завантаження файлів (з шифруванням якщо E2EE активне)
@@ -181,7 +197,7 @@ export function useSendMessageWithFiles(
       // E2EE: шифруємо текст та використовуємо sendEncryptedMessage
       if (shouldEncrypt) {
         const { encryptMessageContent } = await import('@/services');
-        const encrypted = await encryptMessageContent(sharedSecret!, content.trim());
+        const encrypted = await encryptMessageContent(sharedSecret!, chatId, content.trim());
 
         const messagePayload = {
           sender_id: user.id,
@@ -337,9 +353,14 @@ export function useSendMessageWithFiles(
                 (msg.client_id && msg.client_id === message.client_id);
 
               if (matches) {
+                // Зберігаємо оптимістичний текст, доки серверне повідомлення
+                // не розшифрується (щоб у відправника не миготів плейсхолдер/порожній рядок).
                 return {
                   ...msg,
                   ...message,
+                  content: message.encrypted_content
+                    ? msg.content || message.content
+                    : message.content,
                   client_id: msg.client_id || clientId,
                   is_optimistic: false,
                 };

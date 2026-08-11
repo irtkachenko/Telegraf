@@ -1,7 +1,8 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import Linkify from 'linkify-react';
 import { Check, CheckCheck, Clock, Download, Edit, FileIcon, Reply, Trash2, User } from 'lucide-react';
-import { memo } from 'react';
+import { toast } from 'sonner';
+import { memo, useCallback } from 'react';
 import Image from 'next/image';
 
 import {
@@ -14,6 +15,9 @@ import {
 import { formatMessageDate } from '@/lib/date-utils';
 import { isValidUrlForLinkify } from '@/lib/sanitize';
 import { cn } from '@/lib/utils';
+import { useStorageUrl } from '@/hooks/useStorageUrl';
+import { downloadDecryptedFile, isEncryptedAttachment } from '@/lib/decrypt-attachment';
+import { extractStorageRef } from '@/lib/storage-utils';
 import type { Attachment, Message } from '@/types';
 import MessageMediaGrid from './MessageMediaGrid';
 
@@ -29,6 +33,10 @@ interface MessageBubbleProps {
   isHighlighed?: boolean;
   otherParticipantName?: string;
   onMediaSettled?: () => void;
+  /** E2EE shared secret for the chat — used to decrypt file downloads. */
+  sharedSecret?: CryptoKey;
+  /** Chat id used as AES-GCM AAD during file decryption. */
+  chatId?: string;
 }
 
 const MessageBubble = memo(
@@ -44,10 +52,17 @@ const MessageBubble = memo(
     isHighlighed,
     otherParticipantName,
     onMediaSettled,
+    sharedSecret,
+    chatId,
   }: MessageBubbleProps) => {
     const senderId = message.sender_id;
     const isMe = senderId === currentUserId;
-    const isEdited = !!message.updated_at;
+        const isEdited = !!message.updated_at;
+
+    // E2EE: не показуємо плейсхолдер «🔒» — поки не розшифровано, показуємо нейтральний стан.
+    const isEncryptedUndecrypted =
+      !!message.encrypted_content &&
+      (message.content === null || message.content === '' || message.content === '🔒');
 
     const mediaAttachments =
       message.attachments?.filter((a: Attachment) => a.type === 'image' || a.type === 'video') ||
@@ -59,6 +74,26 @@ const MessageBubble = memo(
     // Get sender display details
     const senderName = message.sender?.name || (isMe ? 'Ви' : otherParticipantName || 'Користувач Telegraf');
     const senderImage = message.sender?.image;
+
+    const { getUrl } = useStorageUrl();
+
+    const handleFileDownload = useCallback(
+      async (file: Attachment) => {
+        try {
+          const ref = extractStorageRef(file.url);
+          if (!ref) return;
+          const signedUrl = await getUrl(ref.bucket, ref.path);
+          if (sharedSecret && chatId && isEncryptedAttachment(file)) {
+            await downloadDecryptedFile(sharedSecret, chatId, file, signedUrl);
+          } else {
+            window.open(signedUrl, '_blank', 'noopener,noreferrer');
+          }
+        } catch {
+          toast.error('Не вдалося завантажити файл');
+        }
+      },
+      [getUrl, sharedSecret, chatId],
+    );
 
     return (
       <motion.div
@@ -160,9 +195,12 @@ const MessageBubble = memo(
                         <span className="font-semibold text-[#6b7ae0] mb-0.5 truncate w-full block leading-tight">
                           {replySenderName}
                         </span>
-                        <span className="text-gray-500 line-clamp-1 leading-snug">
-                          {fallbackReply.content ||
-                            (fallbackReply.attachments?.length ? '📎 Вкладення' : '...')}
+                                                <span className="text-gray-500 line-clamp-1 leading-snug">
+                          {fallbackReply.content && fallbackReply.content !== '🔒'
+                            ? fallbackReply.content
+                            : fallbackReply.attachments?.length
+                              ? '📎 Вкладення'
+                              : '...'}
                         </span>
                       </button>
                     );
@@ -178,8 +216,8 @@ const MessageBubble = memo(
                     )}
                   >
                     {/* Text Content */}
-                    {message.content && (
-                        <div className="text-[15px] leading-[1.5] whitespace-pre-wrap break-words block w-full max-w-full overflow-hidden min-w-0">
+                                        {isEncryptedUndecrypted ? null : message.content ? (
+                      <div className="text-[15px] leading-[1.5] whitespace-pre-wrap break-words block w-full max-w-full overflow-hidden min-w-0">
                         <Linkify
                           options={{
                             target: '_blank',
@@ -194,12 +232,12 @@ const MessageBubble = memo(
                           {message.content}
                         </Linkify>
                       </div>
-                    )}
+                    ) : null}
 
                     {/* Media Attachments - Linear style: clean grid */}
                     {mediaAttachments.length > 0 && (
                       <div className="rounded-lg overflow-hidden mt-2 -mx-1 -mb-1 border border-white/[0.06]">
-                        <MessageMediaGrid items={mediaAttachments} onMediaSettled={onMediaSettled} />
+                        <MessageMediaGrid items={mediaAttachments} onMediaSettled={onMediaSettled} sharedSecret={sharedSecret} chatId={chatId} />
                       </div>
                     )}
 
@@ -207,12 +245,11 @@ const MessageBubble = memo(
                     {fileAttachments.length > 0 && (
                       <div className="mt-2 space-y-1.5 max-w-md w-full min-w-0">
                         {fileAttachments.map((file: Attachment) => (
-                          <a
+                          <button
                             key={file.id}
-                            href={file.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-2.5 p-2 rounded-lg bg-white/[0.03] hover:bg-white/[0.06] transition-all w-full min-w-0 group"
+                            type="button"
+                            onClick={() => handleFileDownload(file)}
+                            className="flex items-center gap-2.5 p-2 rounded-lg bg-white/[0.03] hover:bg-white/[0.06] transition-all w-full min-w-0 group cursor-pointer"
                           >
                             <div className="p-1.5 bg-[#5e6ad2]/10 rounded transition-colors shrink-0">
                               <FileIcon className="w-3.5 h-3.5 text-[#6b7ae0]" />
@@ -228,7 +265,7 @@ const MessageBubble = memo(
                               </p>
                             </div>
                             <Download className="w-3.5 h-3.5 text-gray-600 group-hover:text-gray-300 shrink-0 transition-colors" />
-                          </a>
+                          </button>
                         ))}
                       </div>
                     )}
