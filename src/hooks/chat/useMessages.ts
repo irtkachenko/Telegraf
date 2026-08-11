@@ -15,7 +15,7 @@ import { useMarkAsRead } from './useMarkAsRead';
  */
 export function useMessages(chatId: string, isCloseToBottom: boolean) {
   const { user } = useSupabaseAuth();
-  const { mutate: markAsRead } = useMarkAsRead();
+  const { mutateAsync: markAsRead } = useMarkAsRead();
   const readTimersRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
   const lastMarkedRef = useRef<string | null>(null);
 
@@ -160,12 +160,26 @@ export function useMessages(chatId: string, isCloseToBottom: boolean) {
     if (!readTimersRef.current.has(targetMessage.id)) {
       startViewing(targetMessage.id);
 
-      const timer = setTimeout(() => {
-        const stillEligible = isCloseToBottom && isChatOpen && isWindowFocused && isDocumentVisible;
+      // Capture whether the user was near the bottom at scheduling time. Using
+      // this value (instead of re-reading `isCloseToBottom` when the timer
+      // fires) keeps a transient scroll/focus change during smooth auto-scroll
+      // from silently cancelling the read.
+      const scheduledAtBottom = isCloseToBottom;
+
+      const timer = setTimeout(async () => {
+        const stillEligible =
+          scheduledAtBottom && isChatOpen && isWindowFocused && isDocumentVisible;
 
         if (stillEligible && isViewedLongEnough(targetMessage.id, 500)) {
-          markAsRead({ chatId, messageId: targetMessage.id });
-          lastMarkedRef.current = targetMessage.id;
+          try {
+            await markAsRead({ chatId, messageId: targetMessage.id });
+            // Only mark as "done" after the RPC actually succeeds, so a failed
+            // call can be retried by a later effect run instead of being
+            // permanently blocked.
+            lastMarkedRef.current = targetMessage.id;
+          } catch {
+            // RPC failed — leave lastMarkedRef unset so it can be retried.
+          }
         }
 
         stopViewing(targetMessage.id);

@@ -138,7 +138,12 @@ function updateMessageInCache(queryClient: QueryClient, msg: Message) {
 
   const messagesKey = ['messages', msg.chat_id];
   queryClient.setQueryData<InfiniteData<Message[]>>(messagesKey, (old) => {
-    if (!old) return old;
+    // If the messages cache for this chat isn't populated yet (e.g. a realtime
+    // INSERT landed before the initial query resolved), seed it so the
+    // auto-read logic can see the new incoming message instead of dropping it.
+    if (!old) {
+      return { pages: [[msg]], pageParams: [undefined] };
+    }
 
     const existingPageIdx = old.pages.findIndex((page) =>
       page.some(
