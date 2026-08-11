@@ -1,8 +1,12 @@
 export { chatsApi, messagesApi } from './chat';
 export { contactsApi } from './contacts';
+export { devicesApi } from './devices';
+export type { DeviceRow } from './devices';
 export {
   encryptMessageContent,
   decryptMessageContent,
+  encryptMessageContentForDevices,
+  decryptMessageContentForDevice,
   encryptFileAttachment,
   decryptFileAttachment,
 } from './crypto';

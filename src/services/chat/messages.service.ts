@@ -1,7 +1,7 @@
 import { supabase } from '@/lib/supabase/client';
 import { handleError } from '@/shared/lib/error-handler';
 import { NetworkError } from '@/shared/lib/errors';
-import type { Attachment, Message } from '@/types';
+import type { Attachment, Message, MessageKeyEntry } from '@/types';
 
 const MESSAGES_SELECT = `
   *,
@@ -102,9 +102,14 @@ export const messagesApi = {
       reply_to_id?: string;
       attachments?: Attachment[];
       client_id?: string;
+      sender_device_id?: string;
+      sender_device_public_key?: JsonWebKey;
+      message_keys?: MessageKeyEntry[];
     },
   ) => {
-    const { data, error } = await supabase.rpc('rpc_send_encrypted_message', {
+    // Передаємо повний набір параметрів, щоб PostgREST матчив ТІЛЬКИ нову
+    // 10-параметрову функцію (інакше неоднозначність зі старою 7-параметровою).
+    const rpcParams: Record<string, unknown> = {
       p_chat_id: chatId,
       p_content: payload.content || null,
       p_encrypted_content: payload.encrypted_content,
@@ -112,7 +117,12 @@ export const messagesApi = {
       p_reply_to_id: payload.reply_to_id || null,
       p_attachments: payload.attachments || [],
       p_client_id: payload.client_id || null,
-    });
+      p_sender_device_id: payload.sender_device_id || null,
+      p_sender_device_public_key: payload.sender_device_public_key || null,
+      p_message_keys: payload.message_keys || [],
+    };
+
+    const { data, error } = await supabase.rpc('rpc_send_encrypted_message', rpcParams);
 
     if (error) {
       const networkError = new NetworkError(

@@ -1,9 +1,19 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import Linkify from 'linkify-react';
-import { Check, CheckCheck, Clock, Download, Edit, FileIcon, Reply, Trash2, User } from 'lucide-react';
-import { toast } from 'sonner';
-import { memo, useCallback } from 'react';
+import {
+  Check,
+  CheckCheck,
+  Clock,
+  Download,
+  Edit,
+  FileIcon,
+  Reply,
+  Trash2,
+  User,
+} from 'lucide-react';
 import Image from 'next/image';
+import { memo, useCallback } from 'react';
+import { toast } from 'sonner';
 
 import {
   ContextMenu,
@@ -12,12 +22,12 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu';
-import { formatMessageDate } from '@/lib/date-utils';
-import { isValidUrlForLinkify } from '@/lib/sanitize';
-import { cn } from '@/lib/utils';
 import { useStorageUrl } from '@/hooks/useStorageUrl';
+import { formatMessageDate } from '@/lib/date-utils';
 import { downloadDecryptedFile, isEncryptedAttachment } from '@/lib/decrypt-attachment';
+import { isValidUrlForLinkify } from '@/lib/sanitize';
 import { extractStorageRef } from '@/lib/storage-utils';
+import { cn } from '@/lib/utils';
 import type { Attachment, Message } from '@/types';
 import MessageMediaGrid from './MessageMediaGrid';
 
@@ -37,6 +47,8 @@ interface MessageBubbleProps {
   sharedSecret?: CryptoKey;
   /** Chat id used as AES-GCM AAD during file decryption. */
   chatId?: string;
+  /** True if this encrypted message could not be decrypted (key mismatch). */
+  failedToDecrypt?: boolean;
 }
 
 const MessageBubble = memo(
@@ -54,10 +66,11 @@ const MessageBubble = memo(
     onMediaSettled,
     sharedSecret,
     chatId,
+    failedToDecrypt = false,
   }: MessageBubbleProps) => {
     const senderId = message.sender_id;
     const isMe = senderId === currentUserId;
-        const isEdited = !!message.updated_at;
+    const isEdited = !!message.updated_at;
 
     // E2EE: не показуємо плейсхолдер «🔒» — поки не розшифровано, показуємо нейтральний стан.
     const isEncryptedUndecrypted =
@@ -70,9 +83,10 @@ const MessageBubble = memo(
     const fileAttachments = message.attachments?.filter((a: Attachment) => a.type === 'file') || [];
 
     const formattedDate = formatMessageDate(message.created_at);
-    
+
     // Get sender display details
-    const senderName = message.sender?.name || (isMe ? 'Ви' : otherParticipantName || 'Користувач Telegraf');
+    const senderName =
+      message.sender?.name || (isMe ? 'Ви' : otherParticipantName || 'Користувач Telegraf');
     const senderImage = message.sender?.image;
 
     const { getUrl } = useStorageUrl();
@@ -144,7 +158,9 @@ const MessageBubble = memo(
         {isMe && <div className="w-7 shrink-0" />}
 
         {/* Message Container */}
-        <div className={cn('flex flex-col min-w-0 max-w-[75%]', isMe ? 'items-end' : 'items-start')}>
+        <div
+          className={cn('flex flex-col min-w-0 max-w-[75%]', isMe ? 'items-end' : 'items-start')}
+        >
           {/* Sender name - only for other users, above the bubble */}
           {!isMe && (
             <span className="text-[11px] font-semibold text-gray-400 transition-colors group-hover:text-gray-300 select-none mb-1">
@@ -178,7 +194,9 @@ const MessageBubble = memo(
                     const replySenderId = fallbackReply.sender_id;
                     const replySenderName =
                       fallbackReply.sender?.name ||
-                      (replySenderId === currentUserId ? 'Ви' : otherParticipantName || 'Співрозмовник');
+                      (replySenderId === currentUserId
+                        ? 'Ви'
+                        : otherParticipantName || 'Співрозмовник');
 
                     return (
                       <button
@@ -195,7 +213,7 @@ const MessageBubble = memo(
                         <span className="font-semibold text-[#6b7ae0] mb-0.5 truncate w-full block leading-tight">
                           {replySenderName}
                         </span>
-                                                <span className="text-gray-500 line-clamp-1 leading-snug">
+                        <span className="text-gray-500 line-clamp-1 leading-snug">
                           {fallbackReply.content && fallbackReply.content !== '🔒'
                             ? fallbackReply.content
                             : fallbackReply.attachments?.length
@@ -210,13 +228,17 @@ const MessageBubble = memo(
                   <div
                     className={cn(
                       'rounded-xl px-3.5 py-2.5 w-full',
-                      isMe
-                        ? 'bg-[#5e6ad2]/12 self-end'
-                        : 'bg-white/[0.04] self-start',
+                      isMe ? 'bg-[#5e6ad2]/12 self-end' : 'bg-white/[0.04] self-start',
                     )}
                   >
                     {/* Text Content */}
-                                        {isEncryptedUndecrypted ? null : message.content ? (
+                    {isEncryptedUndecrypted ? (
+                      failedToDecrypt ? (
+                        <div className="text-[13px] leading-[1.4] text-gray-500 italic select-none">
+                          🔒 Повідомлення недоступне для розшифрування
+                        </div>
+                      ) : null
+                    ) : message.content ? (
                       <div className="text-[15px] leading-[1.5] whitespace-pre-wrap break-words block w-full max-w-full overflow-hidden min-w-0">
                         <Linkify
                           options={{
@@ -237,7 +259,12 @@ const MessageBubble = memo(
                     {/* Media Attachments - Linear style: clean grid */}
                     {mediaAttachments.length > 0 && (
                       <div className="rounded-lg overflow-hidden mt-2 -mx-1 -mb-1 border border-white/[0.06]">
-                        <MessageMediaGrid items={mediaAttachments} onMediaSettled={onMediaSettled} sharedSecret={sharedSecret} chatId={chatId} />
+                        <MessageMediaGrid
+                          items={mediaAttachments}
+                          onMediaSettled={onMediaSettled}
+                          sharedSecret={sharedSecret}
+                          chatId={chatId}
+                        />
                       </div>
                     )}
 
@@ -277,11 +304,16 @@ const MessageBubble = memo(
                         isMe ? 'justify-end' : 'justify-start',
                       )}
                     >
-                      <span className="text-[10px] font-medium text-gray-600" suppressHydrationWarning>
+                      <span
+                        className="text-[10px] font-medium text-gray-600"
+                        suppressHydrationWarning
+                      >
                         {formattedDate}
                       </span>
                       {isEdited && (
-                        <span className="text-[10px] font-medium text-gray-600">(відредаговано)</span>
+                        <span className="text-[10px] font-medium text-gray-600">
+                          (відредаговано)
+                        </span>
                       )}
                       {/* Delivery/Read status */}
                       {isMe && (
@@ -302,13 +334,19 @@ const MessageBubble = memo(
             </ContextMenuTrigger>
 
             <ContextMenuContent className="z-[110] bg-[#121216] border border-white/[0.08] text-white rounded-lg p-1 w-44 shadow-xl">
-              <ContextMenuItem onClick={() => onReply(message)} className="gap-2 text-xs py-1.5 rounded-md hover:bg-white/5 cursor-pointer">
+              <ContextMenuItem
+                onClick={() => onReply(message)}
+                className="gap-2 text-xs py-1.5 rounded-md hover:bg-white/5 cursor-pointer"
+              >
                 <Reply className="w-3.5 h-3.5" /> Відповісти
               </ContextMenuItem>
               {isMe && (
                 <>
                   <ContextMenuSeparator className="bg-white/[0.05]" />
-                  <ContextMenuItem onClick={() => onEdit(message)} className="gap-2 text-xs py-1.5 rounded-md hover:bg-white/5 cursor-pointer">
+                  <ContextMenuItem
+                    onClick={() => onEdit(message)}
+                    className="gap-2 text-xs py-1.5 rounded-md hover:bg-white/5 cursor-pointer"
+                  >
                     <Edit className="w-3.5 h-3.5" /> Редагувати
                   </ContextMenuItem>
                   <ContextMenuItem

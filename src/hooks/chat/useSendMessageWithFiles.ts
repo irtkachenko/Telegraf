@@ -196,18 +196,80 @@ export function useSendMessageWithFiles(
 
       // E2EE: шифруємо текст та використовуємо sendEncryptedMessage
       if (shouldEncrypt) {
-        const { encryptMessageContent } = await import('@/services');
-        const encrypted = await encryptMessageContent(sharedSecret!, chatId, content.trim());
+        const { encryptMessageContent, encryptMessageContentForDevices, devicesApi } =
+          await import('@/services');
+        const { getCurrentDevice } = await import('@/lib/device');
 
-        const messagePayload = {
+        // Стара схема (спільний секрет) — фолбек за замовчуванням.
+        const fallbackEncrypted = await encryptMessageContent(sharedSecret!, chatId, content.trim());
+        let messagePayload: {
+          sender_id: string;
+          content: string;
+          encrypted_content: string;
+          encrypted_iv: string;
+          reply_to_id?: string;
+          attachments: Attachment[];
+          client_id: string;
+          sender_device_id?: string;
+          sender_device_public_key?: JsonWebKey;
+          message_keys?: import('@/types').MessageKeyEntry[];
+        } = {
           sender_id: user.id,
           content: '🔒', // Плейсхолдер для клієнтів без E2EE
-          encrypted_content: encrypted.encryptedContent,
-          encrypted_iv: encrypted.encryptedIv,
+          encrypted_content: fallbackEncrypted.encryptedContent,
+          encrypted_iv: fallbackEncrypted.encryptedIv,
           reply_to_id: reply_to_id || undefined,
           attachments: successfulUploads,
           client_id: clientId,
         };
+
+        // Спробуємо per-device (багатопристроєве) шифрування: ключ повідомлення
+        // обгортається для кожного пристрою одержувача (і для власних, щоб
+        // відправник міг розшифрувати своє повідомлення на будь-якому пристрої).
+        try {
+          const device = await getCurrentDevice(user.id);
+          if (device && recipientIdOpt) {
+            const [recipientDevices, myDevices] = await Promise.all([
+              devicesApi.listDevices(recipientIdOpt),
+              devicesApi.listDevices(user.id),
+            ]);
+            // TODO(debug): remove
+            console.log('[E2EE][send] deviceId', device.deviceId, 'recipientDevices', recipientDevices.length, 'myDevices', myDevices.length);
+
+            if (recipientDevices.length > 0) {
+              const seen = new Set<string>();
+              const targetDevices = [...recipientDevices, ...myDevices].filter((d) => {
+                if (seen.has(d.id)) return false;
+                seen.add(d.id);
+                return true;
+              });
+
+              const encrypted = await encryptMessageContentForDevices(
+                device.privateKey,
+                device.deviceId,
+                device.publicKeyJwk,
+                chatId,
+                content.trim(),
+                targetDevices,
+              );
+
+              messagePayload = {
+                sender_id: user.id,
+                content: '🔒', // Плейсхолдер для клієнтів без E2EE
+                encrypted_content: encrypted.encryptedContent,
+                encrypted_iv: encrypted.encryptedIv,
+                reply_to_id: reply_to_id || undefined,
+                attachments: successfulUploads,
+                client_id: clientId,
+                sender_device_id: encrypted.senderDeviceId,
+                sender_device_public_key: encrypted.senderDevicePublicKey,
+                message_keys: encrypted.messageKeys,
+              };
+            }
+          }
+        } catch {
+          // Пер-девайс недоступний — залишається фолбек на стару схему.
+        }
 
         let savedMessage: Message;
         try {

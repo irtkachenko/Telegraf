@@ -52,8 +52,21 @@ export interface OptimisticAttachment extends Attachment {
 
 export type ChatRow = Database['public']['Tables']['chats']['Row'];
 
+/** Ключ повідомлення, обгорнутий для одного пристрою одержувача. */
+export interface MessageKeyEntry {
+  device_id: string;
+  key: string; // base64 (AES-GCM wrapped per-message key)
+  iv: string; // base64
+}
+
 export type Message = Database['public']['Tables']['messages']['Row'] & {
   attachments: Attachment[] | null;
+  /** Пристрій-відправник (devices.id) для багатопристроєвого E2EE. */
+  sender_device_id?: string | null;
+  /** Публічний ключ пристрою-відправника (JWK). */
+  sender_device_public_key?: JsonWebKey | null;
+  /** Ключ повідомлення, обгорнутий окремо для кожного пристрою. */
+  message_keys?: MessageKeyEntry[] | null;
   reply_details?: {
     id: string;
     sender: { name?: string | null };

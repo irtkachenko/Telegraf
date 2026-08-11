@@ -17,10 +17,7 @@ import { keysApi } from '@/services';
  *  - useSendMessageWithFiles (fail‑secure: обчислюємо перед відправкою,
  *    щоб не дозволяти fallback на plaintext).
  */
-export async function getSharedSecret(
-  userId: string,
-  recipientId: string,
-): Promise<CryptoKey> {
+export async function getSharedSecret(userId: string, recipientId: string): Promise<CryptoKey> {
   const [cryptoMod, recipientJwk] = await Promise.all([
     import('@/lib/crypto'),
     keysApi.getPublicKey(recipientId),
@@ -55,8 +52,8 @@ export function useSharedSecret(chatId: string | undefined, recipientId: string 
 
   return useQuery({
     queryKey: ['shared-secret', chatId, user?.id, recipientId],
-        queryFn: async () => {
-      if (!user || !recipientId) return null;
+    queryFn: async () => {
+      if (!(user && recipientId)) return null;
       return getSharedSecret(user.id, recipientId);
     },
     enabled: !!user?.id && !!chatId && !!recipientId,

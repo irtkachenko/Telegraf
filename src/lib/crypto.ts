@@ -100,6 +100,74 @@ export async function deletePrivateKey(userId: string): Promise<void> {
 }
 
 // ──────────────────────────────────────────────
+// Device-scoped keys (one keypair per browser/device)
+// ──────────────────────────────────────────────
+
+// Зберігаємо в тій самій IndexedDB-базі, але з префіксом `device:`, щоб
+// не перетинатись зі старим per-user ключем.
+const DEVICE_KEY_PREFIX = 'device:';
+
+/**
+ * Store the private key of the current device.
+ */
+export async function storeDevicePrivateKey(
+  userId: string,
+  privateKey: CryptoKey,
+): Promise<void> {
+  const jwk = await crypto.subtle.exportKey('jwk', privateKey);
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    tx.objectStore(STORE_NAME).put({ userId: `${DEVICE_KEY_PREFIX}${userId}`, jwk });
+    tx.oncomplete = () => {
+      db.close();
+      resolve();
+    };
+    tx.onerror = () => {
+      db.close();
+      reject(tx.error);
+    };
+  });
+}
+
+/**
+ * Retrieve the private key of the current device, or null if none.
+ */
+export async function getDevicePrivateKey(userId: string): Promise<CryptoKey | null> {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readonly');
+    const req = tx.objectStore(STORE_NAME).get(`${DEVICE_KEY_PREFIX}${userId}`);
+    req.onsuccess = async () => {
+      db.close();
+      const record = req.result as { jwk: JsonWebKey } | undefined;
+      if (!record?.jwk) {
+        resolve(null);
+        return;
+      }
+      try {
+        const key = await crypto.subtle.importKey(
+          'jwk',
+          record.jwk,
+          { name: 'ECDH', namedCurve: 'P-256' },
+          // Device key must stay extractable: getCurrentDevice re-exports the
+          // public part from it (the key is generated extractable anyway).
+          true,
+          ['deriveKey', 'deriveBits'],
+        );
+        resolve(key);
+      } catch {
+        resolve(null);
+      }
+    };
+    req.onerror = () => {
+      db.close();
+      reject(req.error);
+    };
+  });
+}
+
+// ──────────────────────────────────────────────
 // ECDH key pair generation
 // ──────────────────────────────────────────────
 
@@ -124,6 +192,19 @@ export async function exportPublicKey(
   publicKey: CryptoKey,
 ): Promise<JsonWebKey> {
   return crypto.subtle.exportKey('jwk', publicKey);
+}
+
+/**
+ * Export ONLY the public part (x, y) of a private ECDH key as a public JWK.
+ * Used when registering a device — the private part (`d`) must never leave
+ * the device, and `importKey` would reject it as a public key anyway.
+ */
+export async function exportPublicPartFromPrivate(
+  privateKey: CryptoKey,
+): Promise<JsonWebKey> {
+  const jwk = await crypto.subtle.exportKey('jwk', privateKey);
+  const { kty, crv, x, y } = jwk;
+  return { kty, crv, x, y };
 }
 
 /**
@@ -245,6 +326,81 @@ export async function decryptText(
   );
 
   return new TextDecoder().decode(decrypted);
+}
+
+// ──────────────────────────────────────────────
+// Per-message key + per-device wrapping (multi-device E2EE)
+// ──────────────────────────────────────────────
+
+/**
+ * Generate a fresh AES-GCM 256-bit key for a single message.
+ * Extractable, because its raw bytes must be wrapped for each recipient device.
+ */
+export async function generateMessageKey(): Promise<CryptoKey> {
+  return crypto.subtle.generateKey(
+    { name: 'AES-GCM', length: 256 },
+    true,
+    ['encrypt', 'decrypt'],
+  );
+}
+
+/**
+ * Encrypt plaintext with a per-message key, optionally bound to `aad` (chat id).
+ */
+export async function encryptWithMessageKey(
+  messageKey: CryptoKey,
+  plaintext: string,
+  aad?: string,
+): Promise<EncryptedPayload> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(plaintext);
+  const iv = fillIV(new ArrayBuffer(12));
+  const params: AesGcmParams = aad
+    ? { name: 'AES-GCM', iv, additionalData: encoder.encode(aad) }
+    : { name: 'AES-GCM', iv };
+  const ciphertext = await crypto.subtle.encrypt(params, messageKey, data);
+  return { ciphertext, iv };
+}
+
+/**
+ * Wrap a per-message key for a recipient device. The recipient unwraps it
+ * with the ECDH shared secret derived from its own device private key and the
+ * sender's device public key.
+ */
+export async function wrapMessageKey(
+  sharedSecret: CryptoKey,
+  messageKey: CryptoKey,
+): Promise<EncryptedPayload> {
+  const raw = await crypto.subtle.exportKey('raw', messageKey);
+  const iv = fillIV(new ArrayBuffer(12));
+  const wrapped = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv },
+    sharedSecret,
+    raw,
+  );
+  return { ciphertext: wrapped, iv };
+}
+
+/**
+ * Unwrap a per-message key using a device's ECDH shared secret.
+ */
+export async function unwrapMessageKey(
+  sharedSecret: CryptoKey,
+  wrapped: ArrayBuffer,
+  iv: ArrayBuffer,
+): Promise<CryptoKey> {
+  const raw = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv },
+    sharedSecret,
+    wrapped,
+  );
+  return crypto.subtle.importKey(
+    'raw',
+    raw,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt'],
+  );
 }
 
 // ──────────────────────────────────────────────

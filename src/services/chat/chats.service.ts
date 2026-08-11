@@ -22,9 +22,12 @@ export const chatsApi = {
           created_at, 
           sender_id, 
           chat_id, 
-                    attachments,
+          attachments,
           encrypted_content,
-          encrypted_iv
+          encrypted_iv,
+          sender_device_id,
+          sender_device_public_key,
+          message_keys
         )
       `)
       .or(`user_id.eq.${userId},recipient_id.eq.${userId}`)
@@ -73,7 +76,10 @@ export const chatsApi = {
                     chat_id,
           attachments,
           encrypted_content,
-          encrypted_iv
+          encrypted_iv,
+          sender_device_id,
+          sender_device_public_key,
+          message_keys
         )
       `,
       )

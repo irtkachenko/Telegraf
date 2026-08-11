@@ -20,8 +20,8 @@ import {
   useScrollToMessage,
 } from '@/hooks/chat';
 import { usePresence } from '@/hooks/user';
-import { revokeAllDecryptedUrls } from '@/lib/decrypt-attachment';
 import { formatLastSeen } from '@/lib/date-utils';
+import { revokeAllDecryptedUrls } from '@/lib/decrypt-attachment';
 import { extractStorageRef } from '@/lib/storage-utils';
 import { useStorageStore } from '@/store/useStorageStore';
 import type { Message } from '@/types';
@@ -65,7 +65,7 @@ export default function ChatPage() {
 
   // Дешифрування повідомлень E2EE
   const otherParticipant = chat?.participants?.find((p) => p.id !== user?.id);
-  const { sharedSecret } = useDecryptChatMessages(id, otherParticipant?.id, messages);
+  const { sharedSecret, failedIds } = useDecryptChatMessages(id, otherParticipant?.id, messages);
 
   // Звільняємо декодовані object URL-и при виході з чату.
   useEffect(() => {
@@ -487,6 +487,7 @@ export default function ChatPage() {
                     onMediaSettled={handleMessageMediaSettled}
                     sharedSecret={sharedSecret ?? undefined}
                     chatId={id}
+                    failedToDecrypt={failedIds.has(message.id)}
                   />
                 </div>
               );

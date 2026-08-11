@@ -10,7 +10,15 @@ import {
   generateFileKey,
   encryptFileMetadata,
   decryptFileMetadata,
+  generateMessageKey,
+  encryptWithMessageKey,
+  wrapMessageKey,
+  unwrapMessageKey,
+  importPublicKey,
+  deriveSharedSecret,
 } from '@/lib/crypto';
+import type { DeviceRow } from '@/services/devices';
+import type { Message, MessageKeyEntry } from '@/types';
 
 // ──────────────────────────────────────────────
 // Шифрування тексту повідомлення
@@ -52,6 +60,106 @@ export async function decryptMessageContent(
   const ciphertext = base64ToBuffer(encryptedContent);
   const iv = base64ToBuffer(encryptedIv);
   return decryptText(sharedSecret, ciphertext, iv, chatId);
+}
+
+// ──────────────────────────────────────────────
+// Багатопристроєве шифрування (per-device E2EE)
+// ──────────────────────────────────────────────
+
+export interface EncryptedDeviceMessagePayload {
+  /** Base64 AES-GCM ciphertext of the content (per-message key). */
+  encryptedContent: string;
+  /** Base64 IV for the content ciphertext. */
+  encryptedIv: string;
+  senderDeviceId: string;
+  senderDevicePublicKey: JsonWebKey;
+  /** Per-message key wrapped for every target device. */
+  messageKeys: MessageKeyEntry[];
+}
+
+/**
+ * Зашифрувати повідомлення так, щоб його міг розшифрувати КОЖЕН пристрій
+ * зі списку `targetDevices` (пристрої одержувача + власні пристрої).
+ * Текст шифрується випадковим ключем повідомлення, який обгортається
+ * окремо для кожного пристрою через ECDH.
+ */
+export async function encryptMessageContentForDevices(
+  devicePrivateKey: CryptoKey,
+  senderDeviceId: string,
+  senderDevicePublicKey: JsonWebKey,
+  chatId: string,
+  plaintext: string,
+  targetDevices: DeviceRow[],
+): Promise<EncryptedDeviceMessagePayload> {
+  const messageKey = await generateMessageKey();
+  const { ciphertext, iv } = await encryptWithMessageKey(messageKey, plaintext, chatId);
+
+  const messageKeys: MessageKeyEntry[] = [];
+  for (const dev of targetDevices) {
+    const devPublicKey = await importPublicKey(dev.public_key_jwk);
+    const shared = await deriveSharedSecret(devicePrivateKey, devPublicKey);
+    const wrapped = await wrapMessageKey(shared, messageKey);
+    messageKeys.push({
+      device_id: dev.id,
+      key: bufferToBase64(wrapped.ciphertext),
+      iv: bufferToBase64(wrapped.iv),
+    });
+  }
+
+  return {
+    encryptedContent: bufferToBase64(ciphertext),
+    encryptedIv: bufferToBase64(iv),
+    senderDeviceId,
+    senderDevicePublicKey,
+    messageKeys,
+  };
+}
+
+/**
+ * Розшифрувати повідомлення на поточному пристрої: знайти свій `device_id`
+ * у `message_keys`, розгорнути ключ повідомлення і розшифрувати текст.
+ * Повертає null, якщо пристрій не є адресатом або не вдалось розшифрувати.
+ */
+export async function decryptMessageContentForDevice(
+  devicePrivateKey: CryptoKey,
+  myDeviceId: string,
+  chatId: string,
+  message: Pick<
+    Message,
+    | 'sender_device_id'
+    | 'sender_device_public_key'
+    | 'message_keys'
+    | 'encrypted_content'
+    | 'encrypted_iv'
+  >,
+): Promise<string | null> {
+  const entry = message.message_keys?.find((k) => k.device_id === myDeviceId);
+  if (
+    !entry ||
+    !message.sender_device_public_key ||
+    !message.encrypted_content ||
+    !message.encrypted_iv
+  ) {
+    return null;
+  }
+
+  try {
+    const senderPublicKey = await importPublicKey(message.sender_device_public_key);
+    const shared = await deriveSharedSecret(devicePrivateKey, senderPublicKey);
+    const messageKey = await unwrapMessageKey(
+      shared,
+      base64ToBuffer(entry.key),
+      base64ToBuffer(entry.iv),
+    );
+    return decryptText(
+      messageKey,
+      base64ToBuffer(message.encrypted_content),
+      base64ToBuffer(message.encrypted_iv),
+      chatId,
+    );
+  } catch {
+    return null;
+  }
 }
 
 // ──────────────────────────────────────────────
