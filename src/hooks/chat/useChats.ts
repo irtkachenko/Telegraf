@@ -33,10 +33,13 @@ export function useChats() {
       return allPages.length + 1;
     },
     enabled: !!user,
-    refetchOnWindowFocus: false,
     // Real-time updates flow in through the WebSocket subscription and update
     // the cache directly. Avoid redundant REST refetches when the cache is
     // already fresh (e.g. re-mounting the chat list after navigation).
     staleTime: 30_000,
+    // …but if a cold-start load failed (transient network hiccup, session still
+    // refreshing), re-run the query when the user returns to the app so the
+    // failure self-heals instead of requiring a manual reload.
+    refetchOnWindowFocus: (query) => query.state.status === 'error',
   });
 }

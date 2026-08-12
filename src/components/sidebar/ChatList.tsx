@@ -21,7 +21,16 @@ import { ChatPreviewLine } from './ChatPreviewLine';
 import { PresenceIndicator } from './PresenceIndicator';
 
 function ChatListBase() {
-  const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } = useChats();
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isLoading,
+    isError,
+    isFetching,
+    refetch,
+  } = useChats();
   const { user, loading: isAuthLoading } = useSupabaseAuth();
   const deleteChat = useDeleteChat();
   const [chatToDelete, setChatToDelete] = useState<string | null>(null);
@@ -179,6 +188,24 @@ function ChatListBase() {
 
   if (showInitialLoader) {
     return <div className="p-8 text-center text-sm text-gray-500 mt-10">Завантаження...</div>;
+  }
+
+  // A failed initial load on a cold start (e.g. transient network hiccup or a
+  // session still being refreshed) must not look like an empty chat list.
+  if (isError && chats.length === 0 && user) {
+    return (
+      <div className="p-8 text-center text-sm text-gray-500 mt-10 flex flex-col items-center gap-3">
+        <span>Не вдалося завантажити діалоги.</span>
+        <button
+          type="button"
+          onClick={() => void refetch()}
+          disabled={isFetching}
+          className="px-3 py-1.5 rounded-lg bg-[#6366f1]/20 hover:bg-[#6366f1]/30 border border-[#6366f1]/30 text-[#8d96e9] text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {isFetching ? 'Завантаження...' : 'Спробувати ще'}
+        </button>
+      </div>
+    );
   }
 
   if (!(chats.length || isLoading || isAuthLoading) && user) {

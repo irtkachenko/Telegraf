@@ -100,6 +100,34 @@ async function getPushRegistration(): Promise<ServiceWorkerRegistration> {
 }
 
 /**
+ * Get the existing browser push subscription (if any), ensuring the service
+ * worker is registered first. On a cold start the SW may not be registered yet
+ * (PwaRegister does it asynchronously), so a bare `getRegistration()` would
+ * return `undefined` and wrongly report "not subscribed" — which makes the app
+ * ask for permission again even though the user already granted it.
+ */
+async function getExistingPushSubscription(): Promise<PushSubscription | null> {
+  if (!isPushAPISupported()) return null;
+
+  try {
+    // register() is idempotent — returns the already-registered worker when one
+    // exists, or starts (re)registration on a cold start.
+    await navigator.serviceWorker.register('/sw.js');
+
+    // Wait until the SW is active, with a safety timeout so this never hangs.
+    const registration = await Promise.race([
+      navigator.serviceWorker.ready,
+      sleep(5000).then(() => null),
+    ]);
+
+    if (!registration) return null;
+    return await registration.pushManager.getSubscription();
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Get the existing browser push subscription (if any), WITHOUT destroying it.
  * We NEVER call unsubscribe() before subscribe() — doing so triggers a long
  * cooldown in FCM/Chrome on Android that makes new subscriptions fail.
@@ -217,8 +245,7 @@ export function usePushNotifications() {
       if (typeof window === 'undefined' || !('Notification' in window)) return false;
       if (Notification.permission !== 'granted') return false;
 
-      const registration = await navigator.serviceWorker.getRegistration('/sw.js');
-      const browserSub = await registration?.pushManager.getSubscription();
+      const browserSub = await getExistingPushSubscription();
       const browserEndpoint = browserSub?.endpoint ?? null;
 
       const dbStatus = await pushApi.isSubscribed(browserEndpoint ?? undefined).catch(() => ({
@@ -373,8 +400,7 @@ export function usePushNotifications() {
     const syncPushState = async () => {
       if (isCheckingSubscription) return;
       const hasDbSub = queryClient.getQueryData(['push-subscription', user.id]) === true;
-      const registration = await navigator.serviceWorker.getRegistration('/sw.js');
-      const browserSub = await registration?.pushManager.getSubscription();
+      const browserSub = await getExistingPushSubscription();
       const permission =
         typeof window !== 'undefined' && 'Notification' in window
           ? Notification.permission
@@ -416,6 +442,28 @@ export function usePushNotifications() {
     };
     void syncPushState();
   }, [user?.id, pushSupported, queryClient, isCheckingSubscription, isStandalone]);
+
+  // Once the service worker finishes registration/activation, re-run the
+  // subscription check. This is a safety net for the cold-start case where the
+  // first check might have completed before the SW was fully registered.
+  useEffect(() => {
+    if (!user || !pushSupported || !isStandalone) return;
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
+
+    let cancelled = false;
+    navigator.serviceWorker.ready
+      .then(() => {
+        if (cancelled) return;
+        queryClient.invalidateQueries({ queryKey: ['push-subscription', user.id] });
+      })
+      .catch(() => {
+        // Ignore — the periodic refresh via focus/pageshow covers this case.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, pushSupported, isStandalone, queryClient]);
 
   // Invalidate subscription state whenever permission changes
   useEffect(() => {

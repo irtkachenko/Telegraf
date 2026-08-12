@@ -26,6 +26,10 @@ export default function PushSubscriptionPrompt() {
 
   const isDenied = state.kind === 'permission-denied';
 
+  // Permission is already granted — only the actual push subscription is
+  // missing, so there is nothing to "allow" again. Show a neutral message.
+  const needsOnlySubscription = state.kind === 'needs-subscribe';
+
   // Don't show again this session if user dismissed
   const isSessionDismissed =
     typeof window !== 'undefined' && sessionStorage.getItem(PROMPT_SESSION_KEY) === 'true';
@@ -120,10 +124,12 @@ export default function PushSubscriptionPrompt() {
 
         <div className="min-w-0 flex-1">
           <h4 className="text-sm font-bold text-white font-tech tracking-wide">
-            Увімкнути сповіщення
+            {needsOnlySubscription ? 'Підключити push-сповіщення' : 'Увімкнути сповіщення'}
           </h4>
           <p className="text-xs text-gray-300 mt-1 font-normal leading-snug">
-            Отримуйте сповіщення про нові повідомлення, навіть коли додаток закритий.
+            {needsOnlySubscription
+              ? 'Дозвіл на сповіщення вже надано. Підключіть доставку повідомлень, щоб вони приходили навіть коли додаток закритий.'
+              : 'Отримуйте сповіщення про нові повідомлення, навіть коли додаток закритий.'}
           </p>
 
           {subscribeError && (
@@ -158,7 +164,11 @@ export default function PushSubscriptionPrompt() {
               disabled={isSubscribing}
               className="px-3 py-1.5 rounded-lg bg-[#6366f1]/20 hover:bg-[#6366f1]/30 border border-[#6366f1]/30 text-[#8d96e9] text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
             >
-              {isSubscribing ? 'Завантаження...' : 'Увімкнути'}
+              {isSubscribing
+                ? 'Завантаження...'
+                : needsOnlySubscription
+                  ? 'Підключити'
+                  : 'Увімкнути'}
             </button>
             <button
               type="button"
