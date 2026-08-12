@@ -30,12 +30,16 @@ export function useChatState(): ChatStateResult {
     currentChatRef.current = currentChat;
   }, [currentChat]);
 
-  // Track window focus
+  // Track window focus.
+  // NOTE: we intentionally do NOT reset `currentChat` on blur/hide — the
+  // `isWindowFocused` / `isDocumentVisible` flags already gate auto-read while
+  // the window is away. Resetting `currentChat` here made the chat permanently
+  // "closed", so returning to the window at the bottom of the chat never
+  // re-marked the newly arrived messages as read.
   useEffect(() => {
     const handleFocus = () => setIsWindowFocused(true);
     const handleBlur = () => {
       setIsWindowFocused(false);
-      setCurrentChat(null);
     };
 
     window.addEventListener('focus', handleFocus);
@@ -52,9 +56,6 @@ export function useChatState(): ChatStateResult {
     const handleVisibilityChange = () => {
       const isVisible = document.visibilityState === 'visible';
       setIsDocumentVisible(isVisible);
-      if (!isVisible) {
-        setCurrentChat(null);
-      }
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);

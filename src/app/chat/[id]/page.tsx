@@ -125,6 +125,10 @@ export default function ChatPage() {
   const [editingMessage, setEditingMessage] = useState<Message | null>(null);
   const [messageToDelete, setMessageToDelete] = useState<string | null>(null);
   const showScrollButton = !isCloseToBottom;
+  // Синя точка на стрілці «вниз», якщо є непрочитані (нові) повідомлення нижче
+  // поточної позиції скролу. Нові повідомлення завжди в кінці списку, тому якщо
+  // користувач не внизу і є непрочитані — вони знаходяться нижче.
+  const hasNewMessagesBelow = unreadCount > 0 && !isCloseToBottom;
   const [showLoader, setShowLoader] = useState(true);
   const isPageLoading = isAuthLoading || isChatLoading || isMessagesLoading;
   const prevMessagesRef = useRef<Message[]>([]);
@@ -523,6 +527,9 @@ export default function ChatPage() {
               className="absolute bottom-5 right-5 p-2 rounded-md bg-[#121216] hover:bg-white/[0.08] border border-white/10 text-gray-400 hover:text-white shadow-xl z-10 transition-all cursor-pointer"
             >
               <ChevronDown className="w-4 h-4" />
+              {hasNewMessagesBelow && (
+                <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-[#3390ec] border-2 border-[#121216] shadow-[0_0_8px_rgba(51,144,236,0.9)]" />
+              )}
             </motion.button>
           )}
         </AnimatePresence>
