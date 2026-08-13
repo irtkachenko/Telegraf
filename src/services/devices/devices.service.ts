@@ -9,9 +9,22 @@ export interface DeviceRow {
   name: string | null;
   created_at: string;
   last_seen_at: string;
+  /** Signal identity public key (base64 X25519). */
+  identity_key?: string | null;
+  /** Signal registration id. */
+  registration_id?: number | null;
+  /** Id of the signed pre key. */
+  signed_pre_key_id?: number | null;
+  /** Signed pre key public key (base64). */
+  signed_pre_key?: string | null;
+  /** Signature of the signed pre key (base64). */
+  signed_pre_key_signature?: string | null;
+  /** Number of unconsumed one-time pre keys on the server. */
+  one_time_pre_key_count?: number | null;
 }
 
-const DEVICE_SELECT = 'id, user_id, public_key_jwk, name, created_at, last_seen_at';
+const DEVICE_SELECT =
+  'id, user_id, public_key_jwk, name, created_at, last_seen_at, identity_key, registration_id, signed_pre_key_id, signed_pre_key, signed_pre_key_signature, one_time_pre_key_count';
 
 export const devicesApi = {
   /**

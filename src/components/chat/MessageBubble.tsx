@@ -24,7 +24,7 @@ import {
 } from '@/components/ui/context-menu';
 import { useStorageUrl } from '@/hooks/useStorageUrl';
 import { formatMessageDate } from '@/lib/date-utils';
-import { downloadDecryptedFile, isEncryptedAttachment } from '@/lib/decrypt-attachment';
+import { downloadDecryptedFile, isEncryptedAttachment, type AttachmentDecryptContext } from '@/lib/decrypt-attachment';
 import { isValidUrlForLinkify } from '@/lib/sanitize';
 import { extractStorageRef } from '@/lib/storage-utils';
 import { cn } from '@/lib/utils';
@@ -43,8 +43,6 @@ interface MessageBubbleProps {
   isHighlighed?: boolean;
   otherParticipantName?: string;
   onMediaSettled?: () => void;
-  /** E2EE shared secret for the chat — used to decrypt file downloads. */
-  sharedSecret?: CryptoKey;
   /** Chat id used as AES-GCM AAD during file decryption. */
   chatId?: string;
   /** True if this encrypted message could not be decrypted (key mismatch). */
@@ -64,7 +62,6 @@ const MessageBubble = memo(
     isHighlighed,
     otherParticipantName,
     onMediaSettled,
-    sharedSecret,
     chatId,
     failedToDecrypt = false,
   }: MessageBubbleProps) => {
@@ -76,6 +73,17 @@ const MessageBubble = memo(
     const isEncryptedUndecrypted =
       !!message.encrypted_content &&
       (message.content === null || message.content === '' || message.content === '🔒');
+
+    // Контекст для Signal-розшифрування вкладень (поточний користувач + відправник).
+    const decryptContext: AttachmentDecryptContext | undefined =
+      currentUserId && chatId && message.sender_id && message.sender_device_id
+        ? {
+            userId: currentUserId,
+            chatId,
+            senderId: message.sender_id,
+            senderDeviceId: message.sender_device_id,
+          }
+        : undefined;
 
     const mediaAttachments =
       message.attachments?.filter((a: Attachment) => a.type === 'image' || a.type === 'video') ||
@@ -97,8 +105,8 @@ const MessageBubble = memo(
           const ref = extractStorageRef(file.url);
           if (!ref) return;
           const signedUrl = await getUrl(ref.bucket, ref.path);
-          if (sharedSecret && chatId && isEncryptedAttachment(file)) {
-            await downloadDecryptedFile(sharedSecret, chatId, file, signedUrl);
+          if (decryptContext && isEncryptedAttachment(file)) {
+            await downloadDecryptedFile(decryptContext, file, signedUrl);
           } else {
             window.open(signedUrl, '_blank', 'noopener,noreferrer');
           }
@@ -106,7 +114,7 @@ const MessageBubble = memo(
           toast.error('Не вдалося завантажити файл');
         }
       },
-      [getUrl, sharedSecret, chatId],
+      [getUrl, decryptContext],
     );
 
     return (
@@ -262,8 +270,7 @@ const MessageBubble = memo(
                         <MessageMediaGrid
                           items={mediaAttachments}
                           onMediaSettled={onMediaSettled}
-                          sharedSecret={sharedSecret}
-                          chatId={chatId}
+                          decryptContext={decryptContext}
                         />
                       </div>
                     )}

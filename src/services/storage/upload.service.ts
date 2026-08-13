@@ -47,17 +47,27 @@ import { encryptFileAttachment } from '@/services/crypto/encryption.service';
 
 /**
  * Завантаження зашифрованого файлу.
- * Шифрує файл перед відправкою на сервер, метадані зберігаються в зашифрованому вигляді.
+ * Шифрує файл перед відправкою на сервер (AES-GCM), а ключ файлу + метадані
+ * загортаються через Signal-сесію окремо для кожного пристрою-одержувача.
  */
 export async function uploadEncryptedFileOptimized(
   file: File,
   chatId: string,
   userId: string,
-  sharedSecret: CryptoKey,
+  opts: {
+    recipientId: string;
+    senderDeviceId: string;
+  },
 ): Promise<Attachment> {
   try {
-    // 1. Шифруємо файл та його метадані
-    const encrypted = await encryptFileAttachment(sharedSecret, chatId, file);
+    // 1. Шифруємо файл та загортаємо метадані через Signal-сесії
+    const encrypted = await encryptFileAttachment({
+      userId,
+      senderDeviceId: opts.senderDeviceId,
+      chatId,
+      recipientId: opts.recipientId,
+      file,
+    });
 
     // 2. Завантажуємо зашифрований файл (з обфускованою назвою)
     const encryptedFile = new File([encrypted.encryptedBlob], encrypted.obfuscatedName, {
@@ -66,7 +76,7 @@ export async function uploadEncryptedFileOptimized(
 
     const attachment = await storageApi.uploadAttachment(encryptedFile, chatId, userId);
 
-    // 3. Додаємо зашифровані метадані до вкладення
+    // 3. Додаємо загорнуті через Signal метадані до вкладення
     return {
       ...attachment,
       type: file.type.startsWith('image/')
@@ -79,8 +89,7 @@ export async function uploadEncryptedFileOptimized(
         ...attachment.metadata,
         type: file.type,
         name: file.name,
-        encrypted_metadata: encrypted.encryptedMetadata.ciphertext,
-        encrypted_metadata_iv: encrypted.encryptedMetadata.iv,
+        encrypted_metadata: encrypted.encryptedMetadata,
       },
     };
   } catch (error) {

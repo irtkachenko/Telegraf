@@ -4,7 +4,6 @@ import { type InfiniteData, useMutation, useQueryClient } from '@tanstack/react-
 import { useRef } from 'react';
 import { toast } from 'sonner';
 import { useSupabaseAuth } from '@/components/auth/AuthProvider';
-import { getSharedSecret } from '@/hooks/keys';
 import { useStorageLimits } from '@/hooks/useDynamicStorageConfig';
 import { extractStorageRef, type StorageRef } from '@/lib/storage-utils';
 import {
@@ -104,22 +103,6 @@ export function useSendMessageWithFiles(
     }
   };
 
-  /**
-   * Спроба отримати спільний секрет з кешу react-query.
-   * Якщо shared secret вже закешований (хуком useSharedSecret),
-   * використовуємо його для шифрування.
-   */
-  const getCachedSharedSecret = (): CryptoKey | null => {
-    if (!user || !options?.recipientId) return null;
-    const cached = queryClient.getQueryData<CryptoKey>([
-      'shared-secret',
-      chatId,
-      user.id,
-      options.recipientId,
-    ]);
-    return cached ?? null;
-  };
-
   return useMutation({
     mutationFn: async ({ content, files, reply_to_id, client_id }: SendMessageWithFilesParams) => {
       if (!user) throw new AuthError('Ви не авторизовані', 'SEND_MESSAGE_AUTH_REQUIRED', 401);
@@ -146,30 +129,36 @@ export function useSendMessageWithFiles(
         }
       }
 
-            // E2EE: спочатку читаємо кеш (useSharedSecret підвищує його),
-      // а якщо його нема — обчислюємо fail‑secure. Коли є одержувач,
-      // ніколи не допускаємо fallback на незашифроване повідомлення.
+            // E2EE: для 1:1 чатів (є одержувач) завжди шифруємо (fail-secure).
       const recipientIdOpt = options?.recipientId;
-      let sharedSecret: CryptoKey | null = getCachedSharedSecret();
-      if (!sharedSecret && recipientIdOpt && user) {
+      let senderDeviceId: string | undefined;
+      if (recipientIdOpt && user) {
         try {
-          sharedSecret = await getSharedSecret(user.id, recipientIdOpt);
+          const { getCurrentDevice } = await import('@/lib/device');
+          const device = await getCurrentDevice(user.id);
+          if (device) senderDeviceId = device.deviceId;
         } catch {
+          senderDeviceId = undefined;
+        }
+        if (!senderDeviceId) {
           throw new AuthError(
-            'Ключі E2EE не готові. Повідомлення не надсилається у відкритому вигляді — ' +
-              'зачекіть, поки співрозмовник ініціалізує свої ключі, або перевірте підключення.',
+            'Ключі Signal E2EE ще не готові. Повідомлення не надсилається у відкритому вигляді — ' +
+              'зачекайте, поки ініціалізуються ключі, або перевірте підключення.',
             'E2EE_NOT_READY',
             403,
           );
         }
       }
-      const shouldEncrypt = !!sharedSecret;
+      const shouldEncrypt = !!recipientIdOpt && !!senderDeviceId;
 
-      // Паралельне завантаження файлів (з шифруванням якщо E2EE активне)
+      // Паралельне завантаження файлів (з Signal-шифруванням, якщо E2EE активне)
       const uploadResults = await Promise.allSettled(
         files.map((file) => {
           if (shouldEncrypt) {
-            return uploadEncryptedFileOptimized(file, chatId, user.id, sharedSecret!);
+            return uploadEncryptedFileOptimized(file, chatId, user.id, {
+              recipientId: recipientIdOpt!,
+              senderDeviceId: senderDeviceId!,
+            });
           }
           return uploadFileOptimized(file, chatId, user.id);
         }),
@@ -194,82 +183,39 @@ export function useSendMessageWithFiles(
 
       const clientId = client_id ?? crypto.randomUUID();
 
-      // E2EE: шифруємо текст та використовуємо sendEncryptedMessage
+      // E2EE: шифруємо текст через Signal-сесії та надсилаємо sendEncryptedMessage
       if (shouldEncrypt) {
-        const { encryptMessageContent, encryptMessageContentForDevices, devicesApi } =
-          await import('@/services');
-        const { getCurrentDevice } = await import('@/lib/device');
+        const { encryptMessageContentForDevices, resolveTargetDevices } = await import('@/services');
 
-        // Стара схема (спільний секрет) — фолбек за замовчуванням.
-        const fallbackEncrypted = await encryptMessageContent(sharedSecret!, chatId, content.trim());
-        let messagePayload: {
-          sender_id: string;
-          content: string;
-          encrypted_content: string;
-          encrypted_iv: string;
-          reply_to_id?: string;
-          attachments: Attachment[];
-          client_id: string;
-          sender_device_id?: string;
-          sender_device_public_key?: JsonWebKey;
-          message_keys?: import('@/types').MessageKeyEntry[];
-        } = {
+        const targetDevices = await resolveTargetDevices(user.id, recipientIdOpt!);
+        if (targetDevices.length === 0) {
+          throw new AuthError(
+            'Співрозмовник ще не ініціалізував Signal-ключі. Повідомлення не надсилається.',
+            'E2EE_NOT_READY',
+            403,
+          );
+        }
+
+        const encrypted = await encryptMessageContentForDevices({
+          userId: user.id,
+          senderDeviceId: senderDeviceId!,
+          chatId,
+          plaintext: content.trim(),
+          targetDevices,
+        });
+
+        const messagePayload = {
           sender_id: user.id,
           content: '🔒', // Плейсхолдер для клієнтів без E2EE
-          encrypted_content: fallbackEncrypted.encryptedContent,
-          encrypted_iv: fallbackEncrypted.encryptedIv,
+          encrypted_content: encrypted.encryptedContent,
+          encrypted_iv: encrypted.encryptedIv,
           reply_to_id: reply_to_id || undefined,
           attachments: successfulUploads,
           client_id: clientId,
+          sender_device_id: encrypted.senderDeviceId,
+          sender_device_public_key: encrypted.senderDevicePublicKey ?? null,
+          message_keys: encrypted.messageKeys,
         };
-
-        // Спробуємо per-device (багатопристроєве) шифрування: ключ повідомлення
-        // обгортається для кожного пристрою одержувача (і для власних, щоб
-        // відправник міг розшифрувати своє повідомлення на будь-якому пристрої).
-        try {
-          const device = await getCurrentDevice(user.id);
-          if (device && recipientIdOpt) {
-            const [recipientDevices, myDevices] = await Promise.all([
-              devicesApi.listDevices(recipientIdOpt),
-              devicesApi.listDevices(user.id),
-            ]);
-            // TODO(debug): remove
-            console.log('[E2EE][send] deviceId', device.deviceId, 'recipientDevices', recipientDevices.length, 'myDevices', myDevices.length);
-
-            if (recipientDevices.length > 0) {
-              const seen = new Set<string>();
-              const targetDevices = [...recipientDevices, ...myDevices].filter((d) => {
-                if (seen.has(d.id)) return false;
-                seen.add(d.id);
-                return true;
-              });
-
-              const encrypted = await encryptMessageContentForDevices(
-                device.privateKey,
-                device.deviceId,
-                device.publicKeyJwk,
-                chatId,
-                content.trim(),
-                targetDevices,
-              );
-
-              messagePayload = {
-                sender_id: user.id,
-                content: '🔒', // Плейсхолдер для клієнтів без E2EE
-                encrypted_content: encrypted.encryptedContent,
-                encrypted_iv: encrypted.encryptedIv,
-                reply_to_id: reply_to_id || undefined,
-                attachments: successfulUploads,
-                client_id: clientId,
-                sender_device_id: encrypted.senderDeviceId,
-                sender_device_public_key: encrypted.senderDevicePublicKey,
-                message_keys: encrypted.messageKeys,
-              };
-            }
-          }
-        } catch {
-          // Пер-девайс недоступний — залишається фолбек на стару схему.
-        }
 
         let savedMessage: Message;
         try {

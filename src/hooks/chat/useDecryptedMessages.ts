@@ -4,115 +4,68 @@ import type { InfiniteData } from '@tanstack/react-query';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { useSupabaseAuth } from '@/components/auth/auth-context';
-import { useSharedSecret } from '@/hooks/keys';
 import type { CurrentDevice } from '@/lib/device';
+import { isSignalEncryptedMessage } from '@/services/crypto';
 import type { Message } from '@/types';
 
 /**
- * Спроба розшифрувати повідомлення. Спершу пробує per-device (багатопристроєве
- * E2EE: розгорнути ключ повідомлення своїм пристроєм), потім — стару схему
- * спільного секрету (для старих повідомлень). Повертає null, якщо не вийшло.
+ * Спроба розшифрувати повідомлення через Signal-сесію для поточного пристрою.
+ * Повертає null, якщо пристрій не є одержувачем або розшифрування не вдалось —
+ * додаток не падає, а показує нейтральний стан.
  */
 async function tryDecryptMessageContent(
   msg: Message,
   chatId: string,
-  ctx: {
-    myDeviceId?: string;
-    devicePrivateKey?: CryptoKey;
-    sharedSecret?: CryptoKey | null;
-  },
+  ctx: { userId?: string; myDeviceId?: string },
 ): Promise<string | null> {
-  if (!msg.encrypted_content || !msg.encrypted_iv) return null;
-
-  // 1. Per-device E2EE.
-  if (ctx.myDeviceId && ctx.devicePrivateKey) {
-    try {
-      const { decryptMessageContentForDevice } = await import('@/services');
-      const decrypted = await decryptMessageContentForDevice(
-        ctx.devicePrivateKey,
-        ctx.myDeviceId,
-        chatId,
-        msg,
-      );
-      // TODO(debug): remove
-      console.log('[E2EE][decrypt] per-device', { myDeviceId: ctx.myDeviceId, messageKeys: msg.message_keys?.length, senderDev: !!msg.sender_device_public_key, ok: decrypted !== null });
-      if (decrypted !== null) return decrypted;
-    } catch (e) {
-      // TODO(debug): remove
-      console.warn('[E2EE][decrypt] per-device error', e);
-    }
+  if (!ctx.userId || !ctx.myDeviceId) return null;
+  try {
+    const { decryptMessageContentForDevice } = await import('@/services');
+    const decrypted = await decryptMessageContentForDevice({
+      userId: ctx.userId,
+      myDeviceId: ctx.myDeviceId,
+      chatId,
+      message: msg,
+    });
+    return decrypted !== null ? decrypted : null;
+  } catch {
+    return null;
   }
-
-  // 2. Legacy: спільний секрет.
-  if (ctx.sharedSecret) {
-    try {
-      const { decryptMessageContent } = await import('@/services');
-      const decrypted = await decryptMessageContent(
-        ctx.sharedSecret,
-        chatId,
-        msg.encrypted_content,
-        msg.encrypted_iv,
-      );
-      // TODO(debug): remove
-      console.log('[E2EE][decrypt] legacy ok?', decrypted !== null);
-      return decrypted;
-    } catch {
-      return null;
-    }
-  }
-
-  return null;
 }
 
 /**
- * Повідомлення ще не розшифроване на цьому клієнті, якщо його `content`
- * досі є плейсхолдером з сервера ('🔒' або null). Після успішного
- * розшифрування `content` стає реальним текстом і більше не збігається.
- *
- * Не перевіряємо порожній рядок: повідомлення лише з файлами мають
- * порожній текст ПІСЛЯ розшифрування, тож така перевірка спричинила б
- * безкінечне повторне розшифрування.
+ * Повідомлення ще не розшифроване на цьому клієнті, якщо воно несе Signal
+ * per-device payload (`message_keys`) і `content` досі є плейсхолдером
+ * ('🔒' або null). Після успішного розшифрування `content` стає текстом.
  */
-type EncryptedMessage = Message & {
-  encrypted_content: string;
-  encrypted_iv: string;
-};
-
-function isUndecrypted(message: Message): message is EncryptedMessage {
+function isUndecrypted(message: Message): boolean {
   return (
-    !!message.encrypted_content &&
-    !!message.encrypted_iv &&
-    (message.content === null || message.content === '🔒')
+    isSignalEncryptedMessage(message) &&
+    (message.content === null || message.content === '🔒' || message.content === '')
   );
 }
 
 /**
  * Хук для дешифрування повідомлень у чаті.
  *
- * Автоматично дешифрує encrypted_content/encrypted_iv всіх повідомлень
- * та оновлює кеш react-query InfiniteData структури.
- *
- * Кандидати на дешифрування відбираються за станом `content` (плейсхолдер),
- * а не за одноразовим набором id. Тому якщо кеш повідомлень буде
- * перезавантажено сирими зашифрованими рядками (наприклад, invalidateQueries
- * після видалення повідомлення), зашифровані повідомлення розшифруються
- * повторно автоматично, а не залишаться порожніми.
+ * Автоматично розшифровує Signal-повідомлення та оновлює кеш react-query
+ * InfiniteData. Кандидати відбираються за станом `content` (плейсхолдер),
+ * тому після перезавантаження кешу зашифровані повідомлення розшифруються
+ * знову автоматично. Нерозшифровані id зберігаються, щоб не повторювати
+ * спроби.
  */
 export function useDecryptChatMessages(
   chatId: string | undefined,
-  recipientId: string | undefined,
+  _recipientId: string | undefined,
   messages: Message[],
 ) {
   const { user } = useSupabaseAuth();
   const queryClient = useQueryClient();
-  const { data: sharedSecret } = useSharedSecret(chatId, recipientId);
 
-  // Повідомлення, які не вдалось розшифрувати (спільний секрет не збігається).
-  // Використовується для показу зрозумілого замінника замість порожнього бульки.
   const [failedIds, setFailedIds] = useState<Set<string>>(new Set());
   const [device, setDevice] = useState<CurrentDevice | null>(null);
 
-  // Завантажуємо поточний пристрій (для per-device E2EE).
+  // Завантажуємо поточний пристрій (необхідний для Signal-сесії).
   useEffect(() => {
     if (!user?.id) return;
     let cancelled = false;
@@ -122,7 +75,7 @@ export function useDecryptChatMessages(
         const d = await getCurrentDevice(user.id);
         if (!cancelled) setDevice(d);
       } catch {
-        // ignore — залишається legacy-дешифрування
+        // ignore
       }
     })();
     return () => {
@@ -130,11 +83,12 @@ export function useDecryptChatMessages(
     };
   }, [user?.id]);
 
+  const myDeviceId = device?.deviceId ?? undefined;
+
   useEffect(() => {
     if (!chatId || messages.length === 0) return;
-    if (!sharedSecret && !device) return;
+    if (!myDeviceId) return;
 
-    // Не чіпаємо ті, що вже не вдалось розшифрувати (щоб не повторювати спроби).
     const pending = messages.filter(isUndecrypted).filter((m) => !failedIds.has(m.id));
     if (pending.length === 0) return;
 
@@ -142,9 +96,8 @@ export function useDecryptChatMessages(
       const results = await Promise.all(
         pending.map(async (msg) => {
           const plaintext = await tryDecryptMessageContent(msg, chatId, {
-            myDeviceId: device?.deviceId,
-            devicePrivateKey: device?.privateKey,
-            sharedSecret,
+            userId: user?.id,
+            myDeviceId,
           });
           return { id: msg.id, plaintext };
         }),
@@ -186,7 +139,7 @@ export function useDecryptChatMessages(
     };
 
     decryptAll();
-  }, [sharedSecret, chatId, messages, queryClient, failedIds, device]);
+  }, [chatId, messages, myDeviceId, user?.id, queryClient, failedIds]);
 
-  return { sharedSecret, failedIds };
+  return { failedIds };
 }

@@ -19,20 +19,24 @@ create index if not exists idx_devices_user_id on public.devices(user_id);
 alter table public.devices enable row level security;
 
 -- Користувач керує власними пристроями
+drop policy if exists "Devices: insert own" on public.devices;
 create policy "Devices: insert own"
     on public.devices for insert to authenticated
     with check (user_id = auth.uid());
 
+drop policy if exists "Devices: update own" on public.devices;
 create policy "Devices: update own"
     on public.devices for update to authenticated
     using (user_id = auth.uid())
     with check (user_id = auth.uid());
 
+drop policy if exists "Devices: delete own" on public.devices;
 create policy "Devices: delete own"
     on public.devices for delete to authenticated
     using (user_id = auth.uid());
 
 -- Публічні ключі пристроїв можна читати всім (вони публічні)
+drop policy if exists "Devices: read all public keys" on public.devices;
 create policy "Devices: read all public keys"
     on public.devices for select to authenticated
     using (true);

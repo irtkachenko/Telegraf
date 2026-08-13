@@ -93,19 +93,36 @@ export async function POST(request: Request) {
       );
     }
 
-    // UPSERT: one device = one row. If the endpoint already exists for this user,
-    // update it; otherwise insert a new row. This prevents duplicate subscriptions.
-    const { error: upsertError } = await adminClient
+    // Robust save: remove any existing row for this user+endpoint, then insert
+    // a fresh one. We intentionally avoid ON CONFLICT with a composite JSON
+    // expression here - that approach depends on a specific unique index
+    // existing in the deployed DB (idx_user_push_subscriptions_user_endpoint).
+    // If that index/constraint is missing (or named differently across
+    // environments) the upsert fails with a confusing "Failed to save subscription".
+    // Delete-then-insert is idempotent and works regardless of which constraints
+    // are deployed.
+    const { error: deleteError } = await adminClient
       .from('user_push_subscriptions')
-      .upsert(
-        { user_id: user.id, subscription },
-        { onConflict: 'user_id,subscription->>endpoint' },
-      );
+      .delete()
+      .eq('user_id', user.id)
+      .filter('subscription->>endpoint', 'eq', subscription.endpoint);
 
-    if (upsertError) {
-      console.error('Failed to save push subscription:', upsertError);
+    if (deleteError) {
+      console.error('Failed to clear old push subscription:', deleteError);
       return NextResponse.json(
-        { error: 'Failed to save subscription', details: upsertError.message },
+        { error: 'Failed to save subscription', details: deleteError.message },
+        { status: 500 },
+      );
+    }
+
+    const { error: insertError } = await adminClient
+      .from('user_push_subscriptions')
+      .insert({ user_id: user.id, subscription });
+
+    if (insertError) {
+      console.error('Failed to save push subscription:', insertError);
+      return NextResponse.json(
+        { error: 'Failed to save subscription', details: insertError.message },
         { status: 500 },
       );
     }

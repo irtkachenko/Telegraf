@@ -65,7 +65,7 @@ export default function ChatPage() {
 
   // Дешифрування повідомлень E2EE
   const otherParticipant = chat?.participants?.find((p) => p.id !== user?.id);
-  const { sharedSecret, failedIds } = useDecryptChatMessages(id, otherParticipant?.id, messages);
+  const { failedIds } = useDecryptChatMessages(id, otherParticipant?.id, messages);
 
   // Звільняємо декодовані object URL-и при виході з чату.
   useEffect(() => {
@@ -489,7 +489,6 @@ export default function ChatPage() {
                     isHighlighed={highlightedId === message.id}
                     otherParticipantName={otherParticipant?.name || undefined}
                     onMediaSettled={handleMessageMediaSettled}
-                    sharedSecret={sharedSecret ?? undefined}
                     chatId={id}
                     failedToDecrypt={failedIds.has(message.id)}
                   />

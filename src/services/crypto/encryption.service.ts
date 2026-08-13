@@ -1,262 +1,240 @@
 'use client';
 
+// ---------------------------------------------------------------------------
+// Message / attachment encryption backed by the official Signal Protocol
+// (X3DH session establishment + Double Ratchet), via
+// `@privacyresearch/libsignal-protocol-typescript` (a browser-compatible port
+// of the reference libsignal implementation).
+//
+// Every message is encrypted once per target device (recipient devices + our
+// own devices) with an independent Signal session. The serialized Signal
+// messages are stored per-device in `messages.message_keys`:
+//
+//   [{ device_id, type (1|3), body (base64) }]
+//
+// Applications that do not support E2EE still show a placeholder as `content`.
+// ---------------------------------------------------------------------------
+
 import {
-  bufferToBase64,
   base64ToBuffer,
-  encryptText,
-  decryptText,
-  encryptFile,
+  bufferToBase64,
   decryptFile,
+  encryptFile,
   generateFileKey,
-  encryptFileMetadata,
-  decryptFileMetadata,
-  generateMessageKey,
-  encryptWithMessageKey,
-  wrapMessageKey,
-  unwrapMessageKey,
-  importPublicKey,
-  deriveSharedSecret,
 } from '@/lib/crypto';
 import type { DeviceRow } from '@/services/devices';
+import { devicesApi } from '@/services/devices';
+import { createSignalStore, encryptToDevice, decryptFromDevice } from '@/services/signal';
 import type { Message, MessageKeyEntry } from '@/types';
 
-// ──────────────────────────────────────────────
-// Шифрування тексту повідомлення
-// ──────────────────────────────────────────────
-
-export interface EncryptedMessagePayload {
-  /** Base64-encoded ciphertext */
-  encryptedContent: string;
-  /** Base64-encoded IV */
-  encryptedIv: string;
-}
-
-/**
- * Зашифрувати текст повідомлення за допомогою спільного секрету чату.
- * `chatId` використовується як AAD, щоб шифротекст не можна було перенести
- * між чатами.
- */
-export async function encryptMessageContent(
-  sharedSecret: CryptoKey,
-  chatId: string,
-  plaintext: string,
-): Promise<EncryptedMessagePayload> {
-  const { ciphertext, iv } = await encryptText(sharedSecret, plaintext, chatId);
-  return {
-    encryptedContent: bufferToBase64(ciphertext),
-    encryptedIv: bufferToBase64(iv),
-  };
-}
-
-/**
- * Розшифрувати текст повідомлення.
- */
-export async function decryptMessageContent(
-  sharedSecret: CryptoKey,
-  chatId: string,
-  encryptedContent: string,
-  encryptedIv: string,
-): Promise<string> {
-  const ciphertext = base64ToBuffer(encryptedContent);
-  const iv = base64ToBuffer(encryptedIv);
-  return decryptText(sharedSecret, ciphertext, iv, chatId);
-}
-
-// ──────────────────────────────────────────────
-// Багатопристроєве шифрування (per-device E2EE)
-// ──────────────────────────────────────────────
+/** Non-empty placeholder stored in `encrypted_content` for legacy checks. */
+export const E2EE_CONTENT_MARKER = '__telegraf_signal__';
 
 export interface EncryptedDeviceMessagePayload {
-  /** Base64 AES-GCM ciphertext of the content (per-message key). */
+  /** Marker (non-empty) for clients that still check `encrypted_content`. */
   encryptedContent: string;
-  /** Base64 IV for the content ciphertext. */
   encryptedIv: string;
   senderDeviceId: string;
-  senderDevicePublicKey: JsonWebKey;
-  /** Per-message key wrapped for every target device. */
+  senderDevicePublicKey?: JsonWebKey | null;
+  /** Serialized Signal message per target device. */
   messageKeys: MessageKeyEntry[];
 }
 
 /**
- * Зашифрувати повідомлення так, щоб його міг розшифрувати КОЖЕН пристрій
- * зі списку `targetDevices` (пристрої одержувача + власні пристрої).
- * Текст шифрується випадковим ключем повідомлення, який обгортається
- * окремо для кожного пристрою через ECDH.
+ * Encrypt `plaintext` for every target device using a per-device Signal
+ * session. Establishes X3DH sessions lazily for new recipients/devices.
  */
-export async function encryptMessageContentForDevices(
-  devicePrivateKey: CryptoKey,
-  senderDeviceId: string,
-  senderDevicePublicKey: JsonWebKey,
-  chatId: string,
-  plaintext: string,
-  targetDevices: DeviceRow[],
-): Promise<EncryptedDeviceMessagePayload> {
-  const messageKey = await generateMessageKey();
-  const { ciphertext, iv } = await encryptWithMessageKey(messageKey, plaintext, chatId);
+export async function encryptMessageContentForDevices(params: {
+  userId: string;
+  senderDeviceId: string;
+  chatId: string;
+  plaintext: string;
+  targetDevices: DeviceRow[];
+}): Promise<EncryptedDeviceMessagePayload> {
+  const { userId, senderDeviceId, plaintext, targetDevices } = params;
+  const store = createSignalStore(userId, senderDeviceId);
+  const buffer = new TextEncoder().encode(plaintext).buffer;
 
   const messageKeys: MessageKeyEntry[] = [];
+  const seen = new Set<string>();
   for (const dev of targetDevices) {
-    const devPublicKey = await importPublicKey(dev.public_key_jwk);
-    const shared = await deriveSharedSecret(devicePrivateKey, devPublicKey);
-    const wrapped = await wrapMessageKey(shared, messageKey);
-    messageKeys.push({
-      device_id: dev.id,
-      key: bufferToBase64(wrapped.ciphertext),
-      iv: bufferToBase64(wrapped.iv),
-    });
+    if (seen.has(dev.id)) continue;
+    seen.add(dev.id);
+    const ct = await encryptToDevice(store, dev.user_id, dev.id, buffer);
+    messageKeys.push({ device_id: dev.id, type: ct.type, body: ct.body });
   }
 
   return {
-    encryptedContent: bufferToBase64(ciphertext),
-    encryptedIv: bufferToBase64(iv),
+    encryptedContent: E2EE_CONTENT_MARKER,
+    encryptedIv: '',
     senderDeviceId,
-    senderDevicePublicKey,
+    senderDevicePublicKey: null,
     messageKeys,
   };
 }
 
 /**
- * Розшифрувати повідомлення на поточному пристрої: знайти свій `device_id`
- * у `message_keys`, розгорнути ключ повідомлення і розшифрувати текст.
- * Повертає null, якщо пристрій не є адресатом або не вдалось розшифрувати.
+ * Decrypt a message that was encrypted for this device via Signal. Returns the
+ * plaintext, or null if this device is not a target or decryption fails
+ * (e.g. key mismatch) — callers must not crash.
  */
-export async function decryptMessageContentForDevice(
-  devicePrivateKey: CryptoKey,
-  myDeviceId: string,
-  chatId: string,
-  message: Pick<
-    Message,
-    | 'sender_device_id'
-    | 'sender_device_public_key'
-    | 'message_keys'
-    | 'encrypted_content'
-    | 'encrypted_iv'
-  >,
-): Promise<string | null> {
-  const entry = message.message_keys?.find((k) => k.device_id === myDeviceId);
-  if (
-    !entry ||
-    !message.sender_device_public_key ||
-    !message.encrypted_content ||
-    !message.encrypted_iv
-  ) {
-    return null;
-  }
+export async function decryptMessageContentForDevice(params: {
+  userId: string;
+  myDeviceId: string;
+  chatId: string;
+  message: Message;
+}): Promise<string | null> {
+  const { userId, myDeviceId, message } = params;
+  const keys: MessageKeyEntry[] = Array.isArray(message.message_keys)
+    ? (message.message_keys as MessageKeyEntry[])
+    : [];
+  const entry = keys.find((k) => k.device_id === myDeviceId);
+  if (!entry || !message.sender_id || !message.sender_device_id) return null;
 
   try {
-    const senderPublicKey = await importPublicKey(message.sender_device_public_key);
-    const shared = await deriveSharedSecret(devicePrivateKey, senderPublicKey);
-    const messageKey = await unwrapMessageKey(
-      shared,
-      base64ToBuffer(entry.key),
-      base64ToBuffer(entry.iv),
+    const store = createSignalStore(userId, myDeviceId);
+    const plaintextBuffer = await decryptFromDevice(
+      store,
+      message.sender_id,
+      message.sender_device_id,
+      entry.type,
+      entry.body,
     );
-    return decryptText(
-      messageKey,
-      base64ToBuffer(message.encrypted_content),
-      base64ToBuffer(message.encrypted_iv),
-      chatId,
-    );
+    return new TextDecoder().decode(new Uint8Array(plaintextBuffer));
   } catch {
     return null;
   }
 }
 
+/** True if the message carries Signal-encrypted per-device payloads. */
+export function isSignalEncryptedMessage(message: Message): boolean {
+  return Array.isArray(message.message_keys) && message.message_keys.length > 0;
+}
+
+/** Resolve the set of target devices for a 1:1 chat (recipient + self). */
+export async function resolveTargetDevices(
+  userId: string,
+  recipientId: string,
+): Promise<DeviceRow[]> {
+  const [recipientDevices, myDevices] = await Promise.all([
+    devicesApi.listDevices(recipientId),
+    devicesApi.listDevices(userId),
+  ]);
+  const seen = new Set<string>();
+  return [...recipientDevices, ...myDevices].filter((d) => {
+
 // ──────────────────────────────────────────────
-// Шифрування файлів для вкладень
+// Файлові вкладення (AES-GCM файл + ключ через Signal-сесію)
 // ──────────────────────────────────────────────
 
 export interface EncryptedAttachmentPayload {
-  /** The encrypted blob for upload */
+  /** The encrypted blob for upload. */
   encryptedBlob: Blob;
-  /** Encrypted metadata to store in the attachment */
-  encryptedMetadata: {
-    ciphertext: string; // base64
-    iv: string; // base64
-  };
-  /** New metadata name (can be obfuscated) */
+  /** New metadata name (obfuscated). */
   obfuscatedName: string;
+  /**
+   * File-key metadata wrapped via a Signal session for every target device:
+   * [{ device_id, type (1|3), body (base64) }].
+   */
+  encryptedMetadata: MessageKeyEntry[];
 }
 
 /**
- * Зашифрувати файл перед завантаженням.
- * Повертає зашифрований Blob та метадані для збереження.
+ * Encrypt a file before upload: the blob is encrypted with a fresh random
+ * AES-GCM key, and the key + original metadata are wrapped via per-device
+ * Signal sessions so only chat participants can recover them.
  */
-export async function encryptFileAttachment(
-  sharedSecret: CryptoKey,
-  chatId: string,
-  file: File,
-): Promise<EncryptedAttachmentPayload> {
-  // 1. Генеруємо унікальний ключ для цього файлу
-  const fileKey = await generateFileKey();
+export async function encryptFileAttachment(params: {
+  userId: string;
+  senderDeviceId: string;
+  chatId: string;
+  recipientId: string;
+  file: File;
+}): Promise<EncryptedAttachmentPayload> {
+  const { userId, senderDeviceId, chatId, recipientId, file } = params;
 
-  // 2. Шифруємо файл (з AAD = chatId)
+  // 1. Унікальний ключ файлу.
+  const fileKey = await generateFileKey();
   const { encryptedBlob, iv: fileIv } = await encryptFile(fileKey, file, chatId);
 
-  // 3. Шифруємо метадані (ключ, IV, оригінальна назва, тип)
-  const { ciphertext: metadataCiphertext, iv: metadataIv } =
-    await encryptFileMetadata(
-      sharedSecret,
-      {
-        fileKey,
-        fileIv,
-        type: file.type,
-        name: file.name,
-      },
-      chatId,
-    );
+  // 2. Метадані: ключ + IV + оригінальна назва/тип.
+  const jwkKey = await crypto.subtle.exportKey('jwk', fileKey);
+  const metadataJson = JSON.stringify({
+    key: jwkKey,
+    iv: bufferToBase64(fileIv),
+    type: file.type,
+    name: file.name,
+  });
+  const metadataBuffer = new TextEncoder().encode(metadataJson).buffer;
 
-  // 4. Оbfuscated назва для зберігання в storage (без розшифрування не впізнати)
+  // 3. Загортаємо метадані через Signal-сесію для кожного пристрою.
+  const store = createSignalStore(userId, senderDeviceId);
+  const targetDevices = await resolveTargetDevices(userId, recipientId);
+  const encryptedMetadata: MessageKeyEntry[] = [];
+  for (const dev of targetDevices) {
+    const ct = await encryptToDevice(store, dev.user_id, dev.id, metadataBuffer);
+    encryptedMetadata.push({ device_id: dev.id, type: ct.type, body: ct.body });
+  }
+
   const obfuscatedName = `enc_${Date.now()}.enc`;
 
-  return {
-    encryptedBlob,
-    encryptedMetadata: {
-      ciphertext: bufferToBase64(metadataCiphertext),
-      iv: bufferToBase64(metadataIv),
-    },
-    obfuscatedName,
-  };
+  return { encryptedBlob, obfuscatedName, encryptedMetadata };
 }
 
-// ──────────────────────────────────────────────
-// Розшифрування вкладених файлів
-// ──────────────────────────────────────────────
-
 export interface DecryptedFileResult {
-  /** The decrypted blob */
   blob: Blob;
-  /** Original MIME type */
   type: string;
-  /** Original file name */
   name: string;
 }
 
 /**
- * Розшифрувати файл, використовуючи збережені зашифровані метадані у вкладенні.
- * Attachments тепер містять encryptedMetadata в своєму metadata полі.
+ * Decrypt a previously encrypted attachment. Finds the Signal-wrapped metadata
+ * for this device, decrypts it, and decrypts the file blob.
  */
-export async function decryptFileAttachment(
-  sharedSecret: CryptoKey,
-  chatId: string,
-  encryptedBlob: Blob,
-  encryptedMetadataCiphertext: string,
-  encryptedMetadataIv: string,
-): Promise<DecryptedFileResult> {
-  // 1. Розшифровуємо метадані (отримуємо fileKey + IV + оригінальні назву/тип)
-  const metadata = await decryptFileMetadata(
-    sharedSecret,
-    base64ToBuffer(encryptedMetadataCiphertext),
-    base64ToBuffer(encryptedMetadataIv),
-    chatId,
+export async function decryptFileAttachment(params: {
+  userId: string;
+  myDeviceId: string;
+  chatId: string;
+  encryptedBlob: Blob;
+  encryptedMetadata: MessageKeyEntry[];
+  /** Sender of the message that carries the attachment. */
+  senderId?: string;
+  senderDeviceId?: string;
+}): Promise<DecryptedFileResult> {
+  const { userId, myDeviceId, chatId, encryptedBlob, encryptedMetadata } = params;
+  const entry = encryptedMetadata.find((e) => e.device_id === myDeviceId);
+  if (!entry || !params.senderId || !params.senderDeviceId) {
+    throw new Error('No Signal-wrapped file key for this device');
+  }
+
+  const store = createSignalStore(userId, myDeviceId);
+  const metadataBuffer = await decryptFromDevice(
+    store,
+    params.senderId,
+    params.senderDeviceId,
+    entry.type,
+    entry.body,
   );
-
-  // 2. Розшифровуємо файл
-  const blob = await decryptFile(metadata.fileKey, encryptedBlob, metadata.iv, metadata.type, chatId);
-
-  return {
-    blob,
-    type: metadata.type,
-    name: metadata.name,
+  const parsed = JSON.parse(new TextDecoder().decode(new Uint8Array(metadataBuffer))) as {
+    key: JsonWebKey;
+    iv: string;
+    type: string;
+    name: string;
   };
+
+  const fileKey = await crypto.subtle.importKey(
+    'jwk',
+    parsed.key,
+    { name: 'AES-GCM', length: 256 },
+    true,
+    ['encrypt', 'decrypt'],
+  );
+  const blob = await decryptFile(fileKey, encryptedBlob, base64ToBuffer(parsed.iv), parsed.type, chatId);
+
+  return { blob, type: parsed.type, name: parsed.name };
+}
+    if (seen.has(d.id)) return false;
+    seen.add(d.id);
+    return true;
+  });
 }

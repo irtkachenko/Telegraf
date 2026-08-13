@@ -8,7 +8,7 @@ import { useStorageUrl } from '@/hooks/useStorageUrl';
 import { extractStorageRef } from '@/lib/storage-utils';
 import { cn } from '@/lib/utils';
 import { useStorageStore } from '@/store/useStorageStore';
-import { getCachedDecryptedUrl, getDecryptedAttachmentUrl, isEncryptedAttachment } from '@/lib/decrypt-attachment';
+import { getCachedDecryptedUrl, getDecryptedAttachmentUrl, isEncryptedAttachment, type AttachmentDecryptContext } from '@/lib/decrypt-attachment';
 import type { Attachment } from '@/types';
 import { MediaPlaceholder } from './MediaPlaceholder';
 
@@ -17,10 +17,8 @@ const ImageModal = lazy(() => import('./ImageModal'));
 interface MessageMediaGridProps {
   items: Attachment[];
   onMediaSettled?: () => void;
-  /** E2EE shared secret for the chat — enables on-demand decryption. */
-  sharedSecret?: CryptoKey;
-  /** Chat id used as AES-GCM AAD during decryption. */
-  chatId?: string;
+  /** Context for on-demand Signal decryption of attachments. */
+  decryptContext?: AttachmentDecryptContext;
 }
 
 interface AttachmentWithUrl extends Attachment {
@@ -45,8 +43,7 @@ function getState(
 export default function MessageMediaGrid({
   items,
   onMediaSettled,
-  sharedSecret,
-  chatId,
+  decryptContext,
 }: MessageMediaGridProps) {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
 
@@ -98,9 +95,9 @@ export default function MessageMediaGrid({
       try {
         const resolvedUrl = await getUrl(ref.bucket, ref.path);
         let displayUrl = resolvedUrl;
-        if (sharedSecret && chatId && isEncryptedAttachment(item)) {
+        if (decryptContext && isEncryptedAttachment(item)) {
           try {
-            displayUrl = await getDecryptedAttachmentUrl(sharedSecret, chatId, item, resolvedUrl);
+            displayUrl = await getDecryptedAttachmentUrl(decryptContext, item, resolvedUrl);
           } catch {
             if (!isMounted) return;
             addFailedUrl(item.url);
@@ -124,7 +121,7 @@ export default function MessageMediaGrid({
       isMounted = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [itemsSignature, getUrl, setUrl, addFailedUrl, removeFailedUrl, setMediaState, sharedSecret, chatId]);
+  }, [itemsSignature, getUrl, setUrl, addFailedUrl, removeFailedUrl, setMediaState, decryptContext]);
 
   // Process items with cached URLs
   const processedItems = useMemo(() => {

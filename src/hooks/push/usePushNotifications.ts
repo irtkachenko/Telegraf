@@ -1,6 +1,6 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSupabaseAuth } from '@/components/auth/AuthProvider';
 import { pushApi, type PushSubscriptionPayload } from '@/services/push/push.service';
@@ -214,6 +214,14 @@ function getRememberedEndpoint(): string | null {
   }
 }
 
+function scheduleSubscriptionResync(queryClient: QueryClient, userId: string): void {
+  // Schedule a background re-check so a transient server-save failure self-heals
+  // (the subscription check query will re-attempt the save automatically).
+  setTimeout(() => {
+    queryClient.invalidateQueries({ queryKey: ['push-subscription', userId] });
+  }, 3000);
+}
+
 export function usePushNotifications() {
   const { user } = useSupabaseAuth();
   const queryClient = useQueryClient();
@@ -346,10 +354,26 @@ export function usePushNotifications() {
           return { success: false, error: errMsg };
         }
 
-        await pushApi.subscribe(subscription);
-        rememberEndpoint(subscription.endpoint);
-        return { success: true };
+        // Saving to the server is a separate step from creating the browser
+        // subscription - a save failure must not be reported as if the browser
+        // itself failed to create the push subscription.
+        try {
+          await pushApi.subscribe(subscription);
+          rememberEndpoint(subscription.endpoint);
+          return { success: true };
+        } catch (saveError: unknown) {
+          const saveMsg =
+            saveError instanceof Error ? saveError.message : 'невідома помилка';
+          const errMsg = `Не вдалося зберегти підписку на сервері: ${saveMsg}. Спробуйте ще раз.`;
+          setSubscribeError(errMsg);
+          // The browser subscription exists - schedule a background re-sync so
+          // the save is retried automatically via the subscription check query.
+          scheduleSubscriptionResync(queryClient, user.id);
+          return { success: false, error: errMsg };
+        }
       } catch (err: unknown) {
+        // This branch is reached only when the BROWSER could not create/return
+        // a push subscription (pushManager.subscribe rejected).
         console.error('[Push] Subscribe error:', err);
         const errMsg =
           err instanceof Error

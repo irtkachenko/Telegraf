@@ -55,8 +55,10 @@ export type ChatRow = Database['public']['Tables']['chats']['Row'];
 /** Ключ повідомлення, обгорнутий для одного пристрою одержувача. */
 export interface MessageKeyEntry {
   device_id: string;
-  key: string; // base64 (AES-GCM wrapped per-message key)
-  iv: string; // base64
+  /** Signal message type: 1 = WhisperMessage, 3 = PreKeyWhisperMessage. */
+  type: 1 | 3;
+  /** Base64-encoded serialized Signal message payload. */
+  body: string;
 }
 
 export type Message = Database['public']['Tables']['messages']['Row'] & {

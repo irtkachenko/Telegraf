@@ -20,9 +20,19 @@ export const E2EE_DB_VERSION = 2;
 const KEYS_STORE = 'keys';
 const VERIFIED_STORE = 'verified-keys';
 
+export const E2EE_DB_VERSION = 3;
+
+/** Signal Protocol stores (managed by src/lib/signal). */
+export const SIGNAL_SESSIONS_STORE = 'signal-sessions';
+export const SIGNAL_IDENTITY_STORE = 'signal-identity';
+export const SIGNAL_PREKEYS_STORE = 'signal-prekeys';
+export const SIGNAL_SIGNED_PREKEYS_STORE = 'signal-signed-prekeys';
+export const SIGNAL_REGISTRATION_STORE = 'signal-registration';
+export const SIGNAL_REMOTE_IDENTITY_STORE = 'signal-remote-identity';
+
 /**
- * Open the shared E2EE database. Creates both stores (and the verification
- * index) so either module can use the DB regardless of initialization order.
+ * Open the shared E2EE database. Creates all stores (legacy + Signal) so any
+ * module can use the DB regardless of initialization order.
  */
 export function openE2EEDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -35,6 +45,26 @@ export function openE2EEDb(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(VERIFIED_STORE)) {
         const store = db.createObjectStore(VERIFIED_STORE, { keyPath: 'recipientId' });
         store.createIndex('byOwner', 'userId', { unique: false });
+      }
+      // Signal Protocol stores (v3)
+      if (!db.objectStoreNames.contains(SIGNAL_SESSIONS_STORE)) {
+        db.createObjectStore(SIGNAL_SESSIONS_STORE, { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains(SIGNAL_IDENTITY_STORE)) {
+        db.createObjectStore(SIGNAL_IDENTITY_STORE, { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains(SIGNAL_PREKEYS_STORE)) {
+        db.createObjectStore(SIGNAL_PREKEYS_STORE, { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains(SIGNAL_SIGNED_PREKEYS_STORE)) {
+        db.createObjectStore(SIGNAL_SIGNED_PREKEYS_STORE, { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains(SIGNAL_REGISTRATION_STORE)) {
+        db.createObjectStore(SIGNAL_REGISTRATION_STORE, { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains(SIGNAL_REMOTE_IDENTITY_STORE)) {
+        // keyPath 'id' = `<localScope>:<peerUserId>:<deviceNumber>` -> { pubKey (b64) }
+        db.createObjectStore(SIGNAL_REMOTE_IDENTITY_STORE, { keyPath: 'id' });
       }
     };
     req.onsuccess = () => resolve(req.result);
