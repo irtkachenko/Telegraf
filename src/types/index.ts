@@ -34,8 +34,9 @@ export interface Attachment {
     expired?: boolean;
     /** Оригінальний MIME-тип файлу (для E2EE-вкладень) */
     type?: string;
-    /** Зашифровані метадані (ключ файлу + IV + оригінальна назва/тип) — base64 */
-    encrypted_metadata?: string;
+    /** Метадані файлу (ключ + IV + оригінальна назва/тип), загорнуті через
+     * Signal-сесії для кожного пристрою: [{ device_id, type, body }] */
+    encrypted_metadata?: MessageKeyEntry[];
     /** IV для розшифрування метаданих — base64 */
     encrypted_metadata_iv?: string;
   };
