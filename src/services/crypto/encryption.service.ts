@@ -64,6 +64,10 @@ export async function encryptMessageContentForDevices(params: {
     messageKeys.push({ device_id: dev.id, type: ct.type, body: ct.body });
   }
 
+  if (messageKeys.length === 0) {
+    throw new Error('NO_SIGNAL_RECIPIENT: recipient has no Signal-ready devices yet');
+  }
+
   return {
     encryptedContent: E2EE_CONTENT_MARKER,
     encryptedIv: '',
@@ -121,10 +125,15 @@ export async function resolveTargetDevices(
     devicesApi.listDevices(userId),
   ]);
   const seen = new Set<string>();
+  // Лише пристрої, готові до Signal (мають identity + signed pre key на
+  // сервері). Пристрої без ключів (напр. одержувач ще не відкривав чат після
+  // міграції) НЕ блокують відправку — вони просто не отримають це повідомлення.
+  const signalReady = (d: DeviceRow) =>
+    !!(d.identity_key && d.signed_pre_key && d.signed_pre_key_signature);
   return [...recipientDevices, ...myDevices].filter((d) => {
     if (seen.has(d.id)) return false;
     seen.add(d.id);
-    return true;
+    return signalReady(d);
   });
 }
 
@@ -179,6 +188,10 @@ export async function encryptFileAttachment(params: {
   for (const dev of targetDevices) {
     const ct = await encryptToDevice(store, dev.user_id, dev.id, metadataBuffer);
     encryptedMetadata.push({ device_id: dev.id, type: ct.type, body: ct.body });
+  }
+
+  if (encryptedMetadata.length === 0) {
+    throw new Error('NO_SIGNAL_RECIPIENT: recipient has no Signal-ready devices yet');
   }
 
   const obfuscatedName = `enc_${Date.now()}.enc`;

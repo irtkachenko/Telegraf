@@ -195,6 +195,20 @@ export function useSendMessageWithFiles(
             403,
           );
         }
+        // Співрозмовник має бути придатним (мати хоча б один Signal-пристрій).
+        // Якщо готові лише власні пристрої — це «несправжній успіх»: адресат
+        // не отримає повідомлення. Fail-secure та чіткий UX.
+        const hasRecipientDevice = targetDevices.some(
+          (d) => d.user_id === recipientIdOpt,
+        );
+        if (!hasRecipientDevice) {
+          throw new AuthError(
+            'Співрозмовник ще не активував наскрізне шифрування на своєму пристрої. ' +
+              'Попросіть його відкрити чат, щоб генерувалися ключі.',
+            'E2EE_NOT_READY',
+            403,
+          );
+        }
 
         const encrypted = await encryptMessageContentForDevices({
           userId: user.id,
