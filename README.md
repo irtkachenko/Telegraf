@@ -1,4 +1,4 @@
-# 💬 Telegraf — Realtime 1:1 Messenger
+# 💬 Telegraf 
 
 ![Next.js](https://img.shields.io/badge/Next.js_16-black?style=for-the-badge&logo=nextdotjs)
 ![React](https://img.shields.io/badge/React_19-61DAFB?style=for-the-badge&logo=react&logoColor=black)
