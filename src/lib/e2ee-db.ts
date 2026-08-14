@@ -14,7 +14,6 @@
 // ---------------------------------------------------------------------------
 
 export const E2EE_DB_NAME = 'telegraf-e2ee';
-export const E2EE_DB_VERSION = 2;
 
 /** Stores we manage. */
 const KEYS_STORE = 'keys';
@@ -33,9 +32,17 @@ export const SIGNAL_REMOTE_IDENTITY_STORE = 'signal-remote-identity';
 /**
  * Open the shared E2EE database. Creates all stores (legacy + Signal) so any
  * module can use the DB regardless of initialization order.
+ *
+ * SSR guard: IndexedDB only exists in the browser. During static generation /
+ * server rendering this throws immediately instead of crashing with a
+ * `ReferenceError: indexedDB is not defined`.
  */
 export function openE2EEDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
+    if (typeof window === 'undefined' || typeof indexedDB === 'undefined') {
+      reject(new Error('IndexedDB is not available in this environment (SSR).'));
+      return;
+    }
     const req = indexedDB.open(E2EE_DB_NAME, E2EE_DB_VERSION);
     req.onupgradeneeded = () => {
       const db = req.result;

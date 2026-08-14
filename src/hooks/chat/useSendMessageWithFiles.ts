@@ -213,7 +213,7 @@ export function useSendMessageWithFiles(
           attachments: successfulUploads,
           client_id: clientId,
           sender_device_id: encrypted.senderDeviceId,
-          sender_device_public_key: encrypted.senderDevicePublicKey ?? null,
+          sender_device_public_key: encrypted.senderDevicePublicKey ?? undefined,
           message_keys: encrypted.messageKeys,
         };
 

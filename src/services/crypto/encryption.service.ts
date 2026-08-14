@@ -122,6 +122,11 @@ export async function resolveTargetDevices(
   ]);
   const seen = new Set<string>();
   return [...recipientDevices, ...myDevices].filter((d) => {
+    if (seen.has(d.id)) return false;
+    seen.add(d.id);
+    return true;
+  });
+}
 
 // ──────────────────────────────────────────────
 // Файлові вкладення (AES-GCM файл + ключ через Signal-сесію)
@@ -232,9 +237,4 @@ export async function decryptFileAttachment(params: {
   const blob = await decryptFile(fileKey, encryptedBlob, base64ToBuffer(parsed.iv), parsed.type, chatId);
 
   return { blob, type: parsed.type, name: parsed.name };
-}
-    if (seen.has(d.id)) return false;
-    seen.add(d.id);
-    return true;
-  });
 }

@@ -10,9 +10,11 @@ import {
   generateAndPersistSignalIdentity,
   generateOneTimePreKeys,
   deviceNumberFromId,
+  bufferToBinaryString,
   binaryStringToBuffer,
   base64ToBuffer,
   bufferToBase64,
+  SIGNED_PRE_KEY_ID,
   ONE_TIME_PRE_KEY_BATCH_SIZE,
   ONE_TIME_PRE_KEY_REFILL_THRESHOLD,
 } from '@/lib/signal';
@@ -89,35 +91,40 @@ async function uploadSignalIdentity(userId: string, deviceId: string): Promise<v
   if (!identity) return;
 
   const registrationId = (await store.getLocalRegistrationId()) ?? 0;
-  const signedKeyPair = await store.loadSignedPreKey(1);
-  const signatureBuffer = await store.getSignedPreKeySignature(1);
+  const signedPreKey = await store.loadSignedPreKey(SIGNED_PRE_KEY_ID);
+  const signedPreKeySignature = await store.getSignedPreKeySignature(SIGNED_PRE_KEY_ID);
   const preKeys = await store.listPreKeys();
+
+  if (!signedPreKey) {
+    throw new Error('Signed pre key missing from local store');
+  }
 
   const { error } = await supabase.rpc('rpc_upsert_signal_device', {
     p_device_id: deviceId,
     p_registration_id: registrationId,
     p_identity_key: bufferToBase64(identity.pubKey),
-    p_signed_pre_key_id: 1,
-    p_signed_pre_key: signedKeyPair ? bufferToBase64(signedKeyPair.pubKey) : '',
-    p_signed_pre_key_signature: signatureBuffer ? bufferToBase64(signatureBuffer) : '',
+    p_signed_pre_key_id: SIGNED_PRE_KEY_ID,
+    p_signed_pre_key: bufferToBase64(signedPreKey.pubKey),
+    p_signed_pre_key_signature: signedPreKeySignature
+      ? bufferToBase64(signedPreKeySignature)
+      : null,
     p_one_time_pre_keys: preKeys.map((k) => ({
       keyId: k.keyId,
       publicKey: bufferToBase64(k.publicKey),
     })),
   });
-
   if (error) throw error;
 }
 
+
 /**
- * Top up the server-side one-time pre key pool when it drops below a threshold.
+ * Refill the server-side pool of one-time pre keys when it runs low.
+ * Called by `ensureSignalIdentity` on subsequent logins.
  * Generates new keys that continue after the highest locally-known key id, so
  * in-flight sessions that already claimed earlier keys are unaffected.
  */
 export async function refillOneTimePreKeys(userId: string, deviceId: string): Promise<void> {
   const store = createSignalStore(userId, deviceId);
-  const identity = await store.getIdentityKeyPair();
-  if (!identity) return;
 
   const { data: count, error } = await supabase.rpc('rpc_get_one_time_pre_key_count', {
     p_device_id: deviceId,
@@ -126,7 +133,8 @@ export async function refillOneTimePreKeys(userId: string, deviceId: string): Pr
   if (typeof count !== 'number' || count > ONE_TIME_PRE_KEY_REFILL_THRESHOLD) return;
 
   const existing = await store.listPreKeys();
-  const startId = existing.length > 0 ? Math.max(...existing.map((k) => k.keyId)) + 1 : 1;
+  const startId =
+    existing.length > 0 ? Math.max(...existing.map((k) => k.keyId)) + 1 : 1;
   const newKeys = await generateOneTimePreKeys(store, startId, ONE_TIME_PRE_KEY_BATCH_SIZE);
 
   const { error: refillError } = await supabase.rpc('rpc_refill_one_time_pre_keys', {
@@ -134,6 +142,11 @@ export async function refillOneTimePreKeys(userId: string, deviceId: string): Pr
     p_one_time_pre_keys: newKeys.map((k) => ({
       keyId: k.keyId,
       publicKey: bufferToBase64(k.publicKey),
+    })),
+  });
+  if (refillError) throw refillError;
+}
+
 /** Fetch a recipient device's Signal pre-key bundle from the server. */
 export async function getSignalBundle(recipientDeviceId: string): Promise<SignalBundle | null> {
   const { data, error } = await supabase.rpc('rpc_get_signal_bundle', {
@@ -188,10 +201,14 @@ export async function encryptToDevice(
 
   const cipher = new SessionCipher(store, address);
   const result = await cipher.encrypt(plaintext);
+  const bodyString = result.body ?? '';
+  if (!bodyString) {
+    throw new Error('Signal ciphertext body is empty');
+  }
   return {
     type: result.type === 3 ? 3 : 1,
     // `body` is a binary string (one char per byte).
-    body: bufferToBase64(binaryStringToBuffer(result.body)),
+    body: bufferToBase64(binaryStringToBuffer(bodyString)),
   };
 }
 
@@ -214,8 +231,4 @@ export async function decryptFromDevice(
     return cipher.decryptPreKeyWhisperMessage(binary, 'binary');
   }
   return cipher.decryptWhisperMessage(binary, 'binary');
-}
-    })),
-  });
-  if (refillError) throw refillError;
 }

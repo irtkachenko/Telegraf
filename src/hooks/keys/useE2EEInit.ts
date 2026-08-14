@@ -5,8 +5,7 @@ import { useEffect } from 'react';
 import { toast } from 'sonner';
 import { useSupabaseAuth } from '@/components/auth/auth-context';
 import { getCurrentDevice } from '@/lib/device';
-import { createSignalStore } from '@/lib/signal';
-import { ensureSignalIdentity } from '@/services';
+import { createSignalStore, ensureSignalIdentity } from '@/services';
 
 /**
  * Спроба «закріпити» IndexedDB-базу з ключами, щоб браузер не викидав її
@@ -48,6 +47,13 @@ export function useE2EEInit() {
     queryKey: ['e2ee-init', user?.id],
     queryFn: async () => {
       if (!user) return { isInitialized: false, lostKey: false };
+      // SSR guard: the query is only meant to run in the browser. During
+      // static generation the client component is rendered server-side, but
+      // IndexedDB / localStorage / the Supabase client must never be touched
+      // there (this also protects against any accidental server-side fetch).
+      if (typeof window === 'undefined') {
+        return { isInitialized: false, lostKey: false };
+      }
 
       void requestPersistentStorage();
 
