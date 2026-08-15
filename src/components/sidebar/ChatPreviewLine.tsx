@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useSupabaseAuth } from '@/components/auth/auth-context';
+import { getDecryptedMessage } from '@/lib/decrypted-message-cache';
 import { isSignalEncryptedMessage } from '@/services/crypto';
 import type { Message } from '@/types';
 
@@ -37,6 +38,19 @@ export function ChatPreviewLine({
 
     let cancelled = false;
     (async () => {
+      // 1) Спершу — вже розшифрований текст із локального кешу (миттєво).
+      try {
+        if (!user?.id) return;
+        const cached = await getDecryptedMessage(chatId, lastMessage.id);
+        if (cached && !cancelled) {
+          setDecrypted({ id: lastMessage.id, text: cached });
+          return;
+        }
+      } catch {
+        // кеш недоступний — продовжуємо розшифровувати через Signal
+      }
+
+      // 2) Кешу немає — розшифровуємо через Signal-сесію.
       try {
         if (!user?.id) return;
         const { getCurrentDevice } = await import('@/lib/device');

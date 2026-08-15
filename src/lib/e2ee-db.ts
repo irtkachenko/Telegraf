@@ -19,7 +19,7 @@ export const E2EE_DB_NAME = 'telegraf-e2ee';
 const KEYS_STORE = 'keys';
 const VERIFIED_STORE = 'verified-keys';
 
-export const E2EE_DB_VERSION = 3;
+export const E2EE_DB_VERSION = 4;
 
 /** Signal Protocol stores (managed by src/lib/signal). */
 export const SIGNAL_SESSIONS_STORE = 'signal-sessions';
@@ -28,6 +28,14 @@ export const SIGNAL_PREKEYS_STORE = 'signal-prekeys';
 export const SIGNAL_SIGNED_PREKEYS_STORE = 'signal-signed-prekeys';
 export const SIGNAL_REGISTRATION_STORE = 'signal-registration';
 export const SIGNAL_REMOTE_IDENTITY_STORE = 'signal-remote-identity';
+
+/**
+ * Store of already-decrypted message plaintexts, keyed by `chatId:messageId`
+ * (so it is unique per chat + message). Keeping the plaintext locally is what
+ * makes messages stay readable after a reload even if the local Ratchet
+ * session / Signal identity is gone — the same approach Telegram/Signal use.
+ */
+export const DECRYPTED_MESSAGES_STORE = 'decrypted-messages';
 
 /**
  * Open the shared E2EE database. Creates all stores (legacy + Signal) so any
@@ -72,6 +80,10 @@ export function openE2EEDb(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(SIGNAL_REMOTE_IDENTITY_STORE)) {
         // keyPath 'id' = `<localScope>:<peerUserId>:<deviceNumber>` -> { pubKey (b64) }
         db.createObjectStore(SIGNAL_REMOTE_IDENTITY_STORE, { keyPath: 'id' });
+      }
+      // Decrypted-message plaintext cache (v4). keyPath 'id' = `chatId:messageId`.
+      if (!db.objectStoreNames.contains(DECRYPTED_MESSAGES_STORE)) {
+        db.createObjectStore(DECRYPTED_MESSAGES_STORE, { keyPath: 'id' });
       }
     };
     req.onsuccess = () => resolve(req.result);

@@ -62,6 +62,15 @@ function toBinaryString(bodyBase64: string): string {
  * - First run: generates identity + registration id + signed pre key + batch of
  *   one-time pre keys, persists them locally, uploads the public parts.
  * - Later runs: refills the server pool when it drops below a threshold.
+ *
+ * Anti-phantom-regeneration guard: if the local identity looks missing but the
+ * server ALREADY has a valid Signal identity for this exact device, we treat it
+ * as a race / slow IndexedDB and DO NOT regenerate. Generating a fresh identity
+ * here would publish a new identity key for the same device and permanently
+ * break every existing session addressed to the old key (exactly the "🔒 after
+ * F5" failure). The local private identity cannot be recovered from the public
+ * one, so the only safe action is to leave the server state untouched and let
+ * the plaintext cache (decrypted-messages) serve already-decrypted history.
  */
 export async function ensureSignalIdentity(
   userId: string,
@@ -73,7 +82,17 @@ export async function ensureSignalIdentity(
   const localRegistrationId = await store.getLocalRegistrationId();
 
   if (!identity || !localRegistrationId) {
-    // Install-time generation for this device.
+    // Identity виглядає відсутнім. Перевіряємо сервер, чи пристрій вже має
+    // опублікований identity — якщо так, це фантомна втрата (race при
+    // відкритті IndexedDB), а не перший запуск. Нічого не перегенеруємо.
+    const serverAlreadyHasIdentity = await deviceHasSignalIdentity(deviceId);
+    if (serverAlreadyHasIdentity) {
+      // Не затираємо старий identity. Лишаємо локальний стан порожнім;
+      // історія буде доступна з кешу розшифрованих повідомлень.
+      return;
+    }
+    // Install-time generation for this device (only when the server has no
+    // identity for it at all — i.e. a genuinely new device).
     await generateAndPersistSignalIdentity(store, ONE_TIME_PRE_KEY_BATCH_SIZE);
   } else {
     await refillOneTimePreKeys(userId, deviceId);
@@ -82,6 +101,32 @@ export async function ensureSignalIdentity(
   // Re-upload the public identity + signed pre key so the server stays in sync
   // (idempotent for one-time pre keys already present).
   await uploadSignalIdentity(userId, deviceId);
+}
+
+/**
+ * True if the server already holds a valid Signal identity for this device.
+ * Uses the same public device row the recipient side sees, so we never consume
+ * one-time pre keys just to check (unlike `getSignalBundle`).
+ */
+async function deviceHasSignalIdentity(deviceId: string): Promise<boolean> {
+  try {
+    const { data, error } = await supabase
+      .from('devices')
+      .select('identity_key, signed_pre_key, signed_pre_key_signature')
+      .eq('id', deviceId)
+      .maybeSingle();
+    if (error) return false;
+    return !!(
+      data &&
+      data.identity_key &&
+      data.signed_pre_key &&
+      data.signed_pre_key_signature
+    );
+  } catch {
+    // Мережа недоступна — не впевнені; консервативно вважаємо, що identity є,
+    // щоб не створити новий і не розірвати сесії під час тимчасових збоїв.
+    return true;
+  }
 }
 
 /** Upload (or refresh) the device's public Signal identity + signed pre key. */

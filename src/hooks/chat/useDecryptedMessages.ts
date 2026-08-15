@@ -5,6 +5,10 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { useSupabaseAuth } from '@/components/auth/auth-context';
 import type { CurrentDevice } from '@/lib/device';
+import {
+  cacheDecryptedMessage,
+  getChatDecryptedMessages,
+} from '@/lib/decrypted-message-cache';
 import { isSignalEncryptedMessage } from '@/services/crypto';
 import type { Message } from '@/types';
 
@@ -89,10 +93,48 @@ export function useDecryptChatMessages(
     if (!chatId || messages.length === 0) return;
     if (!myDeviceId) return;
 
-    const pending = messages.filter(isUndecrypted).filter((m) => !failedIds.has(m.id));
-    if (pending.length === 0) return;
+    let cancelled = false;
 
-    const decryptAll = async () => {
+    // 1) Спершу зчитуємо вже розшифровані тексти з локального кешу
+    //    (IndexedDB). Це те, що робить повідомлення миттєвими після F5:
+    //    Double Ratchet не може (і не повинен) перешифровувати старі
+    //    повідомлення, а тут ми просто беремо збережений plaintext.
+    const applyCached = async () => {
+      let cached: Map<string, string>;
+      try {
+        cached = await getChatDecryptedMessages(chatId);
+      } catch {
+        cached = new Map();
+      }
+      if (cancelled) return;
+
+      const cachedUpdates = new Map<string, string>();
+      for (const m of messages) {
+        if (!isSignalEncryptedMessage(m)) continue;
+        const plain = cached.get(m.id);
+        if (plain && isUndecrypted(m)) cachedUpdates.set(m.id, plain);
+      }
+
+      if (cachedUpdates.size > 0) {
+        queryClient.setQueryData<InfiniteData<Message[]>>(['messages', chatId], (old) => {
+          if (!old) return old;
+          return {
+            ...old,
+            pages: old.pages.map((page) =>
+              page.map((msg) => {
+                const decrypted = cachedUpdates.get(msg.id);
+                return decrypted ? { ...msg, content: decrypted } : msg;
+              }),
+            ),
+          };
+        });
+      }
+
+      // 2) Решта повідомлень — розшифровуємо через Signal і ОДРАЗУ
+      //    зберігаємо результат у кеш, щоб наступне завантаження було миттєвим.
+      const pending = messages.filter(isUndecrypted).filter((m) => !failedIds.has(m.id));
+      if (pending.length === 0) return;
+
       const results = await Promise.all(
         pending.map(async (msg) => {
           const plaintext = await tryDecryptMessageContent(msg, chatId, {
@@ -111,6 +153,12 @@ export function useDecryptChatMessages(
           continue;
         }
         updates.set(id, plaintext);
+        // Зберігаємо розшифрований текст локально.
+        try {
+          await cacheDecryptedMessage(chatId, id, plaintext);
+        } catch {
+          // best-effort: якщо IndexedDB недоступний, просто не кешуємо.
+        }
       }
 
       if (newlyFailed.length > 0) {
@@ -138,7 +186,10 @@ export function useDecryptChatMessages(
       });
     };
 
-    decryptAll();
+    applyCached();
+    return () => {
+      cancelled = true;
+    };
   }, [chatId, messages, myDeviceId, user?.id, queryClient, failedIds]);
 
   return { failedIds };

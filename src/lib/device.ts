@@ -56,10 +56,47 @@ export async function getCurrentDevice(userId: string): Promise<CurrentDevice | 
 /**
  * Гарантує наявність зареєстрованого пристрою: якщо немає — генерує ключ,
  * зберігає його локально й реєструє публічний ключ у БД.
+ *
+ * Захист від «фантомної» перегенерації після F5: IndexedDB може відкриватись
+ * повільно (або відкриватись race-ом із Signal-стором), тому приватний ключ
+ * може «здатися» відсутнім, хоча він ще пишеться. Якщо ми в такому стані одразу
+ * зареєструємо новий пристрій, ми розірвемо всі наявні Signal-сесії. Тому:
+ *   1) якщо є `device_id` у localStorage і він ДОСІ існує на сервері — це
+ *      фантомна «втрата» ключа (або тимчасова недоступність). Чекаємо коротку
+ *      паузу й повторюємо читання приватного ключа, щоб дати IndexedDB
+ *      завершити запис; перевикористовуємо той самий пристрій;
+ *   2) новий пристрій реєструємо лише коли справді немає жодного локального
+ *      стану та сервер його не знає.
  */
 export async function ensureDevice(userId: string): Promise<CurrentDevice> {
   const existing = await getCurrentDevice(userId);
   if (existing) return existing;
+
+  const deviceId = getDeviceId(userId);
+
+  // Якщо device_id залишився в localStorage, але приватний ключ не знайдено —
+  // можливо, це race з відкриттям IndexedDB. Даємо БД шанс дописати ключ.
+  if (deviceId) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const retried = await getCurrentDevice(userId);
+      if (retried) return retried;
+      // Сервер більше не має цього device_id → ключ справді втрачено,
+      // створюємо новий пристрій нижче.
+      let serverHasDevice = false;
+      try {
+        const devices = await devicesApi.listDevices(userId);
+        serverHasDevice = devices.some((d) => d.id === deviceId);
+      } catch {
+        // Мережа недоступна — не можемо перевірити; вважаємо, що втратили.
+        serverHasDevice = false;
+      }
+      if (!serverHasDevice) break;
+      // Пристрій ще існує на сервері, але локально немає ключа — чекаємо і
+      // пробуємо знову, щоб не затирати device_id даремно.
+      await new Promise((r) => setTimeout(r, 150));
+    }
+    // Якщо після повторів ключ з'явився — вже повернулись вище.
+  }
 
   const { privateKey } = await generateKeyPair();
   const publicKeyJwk = await exportPublicPartFromPrivate(privateKey);
