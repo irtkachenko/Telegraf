@@ -52,6 +52,10 @@ export async function getDecryptedAttachmentUrl(
 
   const res = await fetch(encryptedUrl);
   if (!res.ok) {
+    console.error(
+      `[DecryptAttachment] Failed to fetch encrypted file (HTTP ${res.status})`,
+      { encryptedUrl, attachmentId: attachment.id },
+    );
     throw new Error(`Failed to fetch encrypted file (HTTP ${res.status})`);
   }
   const blob = await res.blob();

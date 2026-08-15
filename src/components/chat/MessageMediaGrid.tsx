@@ -98,7 +98,11 @@ export default function MessageMediaGrid({
         if (decryptContext && isEncryptedAttachment(item)) {
           try {
             displayUrl = await getDecryptedAttachmentUrl(decryptContext, item, resolvedUrl);
-          } catch {
+          } catch (err) {
+            console.error(
+              '[MediaGrid] Failed to decrypt attachment',
+              `${item.id}`, err,
+            );
             if (!isMounted) return;
             addFailedUrl(item.url);
             setMediaState(cacheKey, { isLoading: false, hasError: true });

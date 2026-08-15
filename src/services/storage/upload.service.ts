@@ -93,6 +93,11 @@ export async function uploadEncryptedFileOptimized(
       },
     };
   } catch (error) {
+    console.error(
+      '[Upload] Encrypted file upload failed',
+      { file: file.name, chatId },
+      error,
+    );
     const statusCode =
       error && typeof error === 'object' && 'status' in error ? (error.status as number) : 500;
 

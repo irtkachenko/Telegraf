@@ -225,29 +225,49 @@ export async function decryptFileAttachment(params: {
     throw new Error('No Signal-wrapped file key for this device');
   }
 
-  const store = createSignalStore(userId, myDeviceId);
-  const metadataBuffer = await decryptFromDevice(
-    store,
-    params.senderId,
-    params.senderDeviceId,
-    entry.type,
-    entry.body,
-  );
-  const parsed = JSON.parse(new TextDecoder().decode(new Uint8Array(metadataBuffer))) as {
-    key: JsonWebKey;
-    iv: string;
-    type: string;
-    name: string;
-  };
+  try {
+    const store = createSignalStore(userId, myDeviceId);
+    const metadataBuffer = await decryptFromDevice(
+      store,
+      params.senderId,
+      params.senderDeviceId,
+      entry.type,
+      entry.body,
+    );
+    const parsed = JSON.parse(new TextDecoder().decode(new Uint8Array(metadataBuffer))) as {
+      key: JsonWebKey;
+      iv: string;
+      type: string;
+      name: string;
+    };
 
-  const fileKey = await crypto.subtle.importKey(
-    'jwk',
-    parsed.key,
-    { name: 'AES-GCM', length: 256 },
-    true,
-    ['encrypt', 'decrypt'],
-  );
-  const blob = await decryptFile(fileKey, encryptedBlob, base64ToBuffer(parsed.iv), parsed.type, chatId);
+    const fileKey = await crypto.subtle.importKey(
+      'jwk',
+      parsed.key,
+      { name: 'AES-GCM', length: 256 },
+      true,
+      ['encrypt', 'decrypt'],
+    );
+    const blob = await decryptFile(
+      fileKey,
+      encryptedBlob,
+      base64ToBuffer(parsed.iv),
+      parsed.type,
+      chatId,
+    );
 
-  return { blob, type: parsed.type, name: parsed.name };
+    return { blob, type: parsed.type, name: parsed.name };
+  } catch (err) {
+    console.error(
+      '[DecryptAttachment] Signal/AES decrypt failed',
+      {
+        myDeviceId,
+        senderId: params.senderId,
+        senderDeviceId: params.senderDeviceId,
+        entryType: entry.type,
+      },
+      err,
+    );
+    throw err;
+  }
 }
